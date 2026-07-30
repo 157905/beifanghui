@@ -13,6 +13,7 @@ public enum CommonErrorCode {
     REFUND_CONFLICT("REFUND_409_001", "当前订单不可退款", HttpStatus.CONFLICT),
     VERIFICATION_CONFLICT("VERIFICATION_409_001", "核销码当前不可使用", HttpStatus.CONFLICT),
     CONFLICT("SYSTEM_409_001", "当前状态不允许该操作", HttpStatus.CONFLICT),
+    RATE_LIMITED("SYSTEM_429_001", "请求过于频繁，请稍后重试", HttpStatus.TOO_MANY_REQUESTS),
     INTERNAL_ERROR("SYSTEM_500_001", "系统暂时无法处理请求", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String code;

@@ -1,5 +1,6 @@
 package com.beifanghui.backend.identity.web;
 
+import com.beifanghui.backend.shared.ratelimit.RedisRateLimitInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -8,9 +9,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebAuthenticationConfiguration implements WebMvcConfigurer {
 
     private final AuthenticationInterceptor authenticationInterceptor;
+    private final RedisRateLimitInterceptor rateLimitInterceptor;
 
-    public WebAuthenticationConfiguration(AuthenticationInterceptor authenticationInterceptor) {
+    public WebAuthenticationConfiguration(
+            AuthenticationInterceptor authenticationInterceptor,
+            RedisRateLimitInterceptor rateLimitInterceptor) {
         this.authenticationInterceptor = authenticationInterceptor;
+        this.rateLimitInterceptor = rateLimitInterceptor;
     }
 
     @Override
@@ -20,5 +25,7 @@ public class WebAuthenticationConfiguration implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/api/v1/app/system/health",
                         "/api/v1/app/auth/mock-login");
+        registry.addInterceptor(rateLimitInterceptor)
+                .addPathPatterns("/api/v1/**");
     }
 }
