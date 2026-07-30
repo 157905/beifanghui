@@ -1,0 +1,5 @@
+# 复制为 application-local.properties 后填写本机配置。
+# application-local.properties 已被 .gitignore 排除，禁止提交真实密码。
+spring.datasource.password=请填写本机数据库密码
+spring.flyway.clean-disabled=true
+logging.level.com.beifanghui.backend=DEBUG
