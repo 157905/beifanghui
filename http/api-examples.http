@@ -1,12 +1,12 @@
-@userToken = mock_0bd77e6a0c6f41b3884737c788d90b1d
-@adminToken = replace_with_admin_access_token
-@opsToken = replace_with_ops_access_token
+@userToken = 请粘贴普通用户登录返回的accessToken
+@adminToken = 请粘贴管理员登录返回的accessToken
+@opsToken = 请粘贴运维人员登录返回的accessToken
 @orderId = 1
 
-### Health
+### 1. 健康检查：确认后端已经启动
 GET http://localhost:8080/api/v1/app/system/health
 
-### Login as user
+### 2. 普通用户模拟登录：执行后复制 data.accessToken 到文件顶部的 userToken
 POST http://localhost:8080/api/v1/app/auth/mock-login
 Content-Type: application/json
 
@@ -15,69 +15,146 @@ Content-Type: application/json
   "accountType": "USER"
 }
 
-### Resources
+### 3. 管理员模拟登录：执行后复制 data.accessToken 到文件顶部的 adminToken
+POST http://localhost:8080/api/v1/app/auth/mock-login
+Content-Type: application/json
+
+{
+  "displayName": "资源管理员",
+  "accountType": "ADMIN"
+}
+
+### 4. 运维人员模拟登录：执行后复制 data.accessToken 到文件顶部的 opsToken
+POST http://localhost:8080/api/v1/app/auth/mock-login
+Content-Type: application/json
+
+{
+  "displayName": "审计运维",
+  "accountType": "OPS"
+}
+
+### 5. 查询已上架资源列表
 GET http://localhost:8080/api/v1/app/resources?page=1&pageSize=20
 Authorization: Bearer {{userToken}}
 
-### Create order (replace skuId and use a new key for every new order)
+### 6. 查询资源详情：将5替换为资源列表中的真实 resourceId
+GET http://localhost:8080/api/v1/app/resources/5
+Authorization: Bearer {{userToken}}
+
+### 7. 查询SKU库存：将5替换为资源详情中的真实 skuId
+GET http://localhost:8080/api/v1/app/resource-skus/5/availability?date=2026-07-30&timeSlot=
+Authorization: Bearer {{userToken}}
+
+### 8. 创建订单：每次创建新订单都必须使用新的 Idempotency-Key
 POST http://localhost:8080/api/v1/app/orders
 Authorization: Bearer {{userToken}}
 Idempotency-Key: shared-order-001
 Content-Type: application/json
 
 {
-  "items": [{"skuId": 5, "quantity": 1, "serviceDate": "2026-07-30", "timeSlot": ""}],
+  "items": [
+    {
+      "skuId": 5,
+      "quantity": 1,
+      "serviceDate": "2026-07-30",
+      "timeSlot": ""
+    }
+  ],
   "remark": "模块联调订单"
 }
 
-### Mock pay
+### 9. 查询我的订单列表
+GET http://localhost:8080/api/v1/app/orders?page=1&pageSize=20
+Authorization: Bearer {{userToken}}
+
+### 10. 查询订单详情：修改文件顶部的 orderId
+GET http://localhost:8080/api/v1/app/orders/{{orderId}}
+Authorization: Bearer {{userToken}}
+
+### 11. 模拟支付：只允许支付未过期的待支付订单
 POST http://localhost:8080/api/v1/app/orders/{{orderId}}/mock-pay
 Authorization: Bearer {{userToken}}
 Idempotency-Key: shared-payment-001
 
-### Tickets
+### 12. 查询已支付订单的电子票
 GET http://localhost:8080/api/v1/app/orders/{{orderId}}/tickets
 Authorization: Bearer {{userToken}}
 
-### Order payment/refund/verification timeline
+### 13. 查询订单完整时间线：包含创建、支付、退款和核销事件
 GET http://localhost:8080/api/v1/app/orders/{{orderId}}/timeline
 Authorization: Bearer {{userToken}}
 
-### Admin order list
-GET http://localhost:8080/api/v1/admin/orders?page=1&pageSize=20
-Authorization: Bearer {{adminToken}}
-
-### Admin order detail
-GET http://localhost:8080/api/v1/admin/orders/{{orderId}}
-Authorization: Bearer {{adminToken}}
-
-### Admin scans overdue unpaid orders (also runs automatically every minute)
-POST http://localhost:8080/api/v1/admin/orders/expire-overdue
-Authorization: Bearer {{adminToken}}
-
-### Admin takes a resource offline (restore ACTIVE after testing)
-PATCH http://localhost:8080/api/v1/admin/resources/5/status
-Authorization: Bearer {{adminToken}}
-Content-Type: application/json
-
-{"status":"INACTIVE"}
-
-### Admin adjusts inventory; replace inventoryId with a real bf_inventory.id
-POST http://localhost:8080/api/v1/admin/inventories/5/adjust
-Authorization: Bearer {{adminToken}}
-Idempotency-Key: shared-inventory-adjust-001
-Content-Type: application/json
-
-{"delta":-1,"remark":"共享接口联调"}
-
-### Ops audit log
-GET http://localhost:8080/api/v1/ops/audit-logs?page=1&pageSize=20
-Authorization: Bearer {{opsToken}}
-
-### Mock refund (only for a paid and unused order)
+### 14. 模拟退款：仅用于已支付且电子票尚未核销的订单
 POST http://localhost:8080/api/v1/app/orders/{{orderId}}/mock-refund
 Authorization: Bearer {{userToken}}
 Idempotency-Key: shared-refund-001
 Content-Type: application/json
 
-{"reason":"模块联调退款"}
+{
+  "reason": "模块联调退款"
+}
+
+### 15. 管理员查询全部订单
+GET http://localhost:8080/api/v1/admin/orders?page=1&pageSize=20
+Authorization: Bearer {{adminToken}}
+
+### 16. 管理员查询指定订单详情
+GET http://localhost:8080/api/v1/admin/orders/{{orderId}}
+Authorization: Bearer {{adminToken}}
+
+### 17. 管理员手动扫描超时未支付订单：系统每分钟也会自动扫描
+POST http://localhost:8080/api/v1/admin/orders/expire-overdue
+Authorization: Bearer {{adminToken}}
+
+### 18. 管理员下架资源：测试完成后务必执行第19步恢复上架
+PATCH http://localhost:8080/api/v1/admin/resources/5/status
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "status": "INACTIVE"
+}
+
+### 19. 管理员恢复资源上架
+PATCH http://localhost:8080/api/v1/admin/resources/5/status
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "status": "ACTIVE"
+}
+
+### 20. 管理员减少一份库存：库存记录ID不是skuId，请使用数据库中的真实 inventoryId
+POST http://localhost:8080/api/v1/admin/inventories/5/adjust
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: shared-inventory-adjust-down-001
+Content-Type: application/json
+
+{
+  "delta": -1,
+  "remark": "联调测试减少库存"
+}
+
+### 21. 管理员恢复一份库存：必须使用新的 Idempotency-Key
+POST http://localhost:8080/api/v1/admin/inventories/5/adjust
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: shared-inventory-adjust-up-001
+Content-Type: application/json
+
+{
+  "delta": 1,
+  "remark": "联调测试恢复库存"
+}
+
+### 22. 管理员核销电子票：将核销码替换为第12步返回的 data[0].code
+POST http://localhost:8080/api/v1/admin/verifications/consume
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "code": "请粘贴电子票核销码"
+}
+
+### 23. 运维人员查询审计日志
+GET http://localhost:8080/api/v1/ops/audit-logs?page=1&pageSize=20
+Authorization: Bearer {{opsToken}}
