@@ -1,6 +1,7 @@
 @baseUrl = http://localhost:8080
 @userToken = replace_with_user_access_token
 @adminToken = replace_with_admin_access_token
+@opsToken = replace_with_ops_access_token
 @orderId = 1
 
 ### Health
@@ -54,6 +55,25 @@ Authorization: Bearer {{adminToken}}
 ### Admin scans overdue unpaid orders (also runs automatically every minute)
 POST {{baseUrl}}/api/v1/admin/orders/expire-overdue
 Authorization: Bearer {{adminToken}}
+
+### Admin takes a resource offline (restore ACTIVE after testing)
+PATCH {{baseUrl}}/api/v1/admin/resources/5/status
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"status":"INACTIVE"}
+
+### Admin adjusts inventory; replace inventoryId with a real bf_inventory.id
+POST {{baseUrl}}/api/v1/admin/inventories/5/adjust
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: shared-inventory-adjust-001
+Content-Type: application/json
+
+{"delta":-1,"remark":"共享接口联调"}
+
+### Ops audit log
+GET {{baseUrl}}/api/v1/ops/audit-logs?page=1&pageSize=20
+Authorization: Bearer {{opsToken}}
 
 ### Mock refund (only for a paid and unused order)
 POST {{baseUrl}}/api/v1/app/orders/{{orderId}}/mock-refund
