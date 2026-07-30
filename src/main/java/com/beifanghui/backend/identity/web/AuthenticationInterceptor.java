@@ -1,7 +1,8 @@
 package com.beifanghui.backend.identity.web;
 
-import com.beifanghui.backend.identity.api.MockLoginResponse;
-import com.beifanghui.backend.identity.application.MockLoginService;
+import com.beifanghui.backend.identity.application.AccessTokenService;
+import com.beifanghui.backend.identity.domain.AccessSession;
+import com.beifanghui.backend.identity.domain.IdentityPrincipal;
 import com.beifanghui.backend.shared.error.BusinessException;
 import com.beifanghui.backend.shared.error.CommonErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,29 +17,26 @@ public class AuthenticationInterceptor implements HandlerInterceptor {
     public static final String PRINCIPAL_ATTRIBUTE = AuthenticationInterceptor.class.getName() + ".principal";
     private static final String BEARER_PREFIX = "Bearer ";
 
-    private final MockLoginService mockLoginService;
+    private final AccessTokenService accessTokenService;
 
-    public AuthenticationInterceptor(MockLoginService mockLoginService) {
-        this.mockLoginService = mockLoginService;
+    public AuthenticationInterceptor(AccessTokenService accessTokenService) {
+        this.accessTokenService = accessTokenService;
     }
 
     @Override
-    public boolean preHandle(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            Object handler) {
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String authorization = request.getHeader("Authorization");
         if (!StringUtils.hasText(authorization) || !authorization.startsWith(BEARER_PREFIX)) {
             throw new BusinessException(CommonErrorCode.UNAUTHORIZED, "缺少有效的 Bearer Token");
         }
 
         String token = authorization.substring(BEARER_PREFIX.length()).trim();
-        MockLoginResponse session = mockLoginService.findSession(token);
+        AccessSession session = accessTokenService.find(token);
         if (session == null) {
             throw new BusinessException(CommonErrorCode.UNAUTHORIZED, "登录令牌无效或已过期");
         }
 
-        MockLoginResponse.MockPrincipal source = session.user();
+        IdentityPrincipal source = session.principal();
         String requiredAccountType = requiredAccountType(request.getRequestURI());
         if (!requiredAccountType.equals(source.accountType())) {
             throw new BusinessException(

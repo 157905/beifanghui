@@ -1,6 +1,7 @@
 package com.beifanghui.backend.verification.application;
 
 import com.beifanghui.backend.identity.web.AuthenticatedPrincipal;
+import com.beifanghui.backend.order.domain.OrderStatePolicy;
 import com.beifanghui.backend.shared.error.BusinessException;
 import com.beifanghui.backend.shared.error.CommonErrorCode;
 import com.beifanghui.backend.verification.api.VerificationTicketResponse;
@@ -100,7 +101,7 @@ public class VerificationTicketService {
         if (!"UNUSED".equals(ticket.status())) {
             throw new BusinessException(CommonErrorCode.VERIFICATION_CONFLICT, "该电子票已核销或已失效，状态为 " + ticket.status());
         }
-        if (!List.of("PAID", "READY").contains(ticket.orderStatus())) {
+        if (!OrderStatePolicy.canVerify(ticket.orderStatus())) {
             throw new BusinessException(CommonErrorCode.VERIFICATION_CONFLICT, "订单状态不允许核销：" + ticket.orderStatus());
         }
         if (ticket.serviceDate() != null && !ticket.serviceDate().equals(LocalDate.now())) {

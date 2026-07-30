@@ -1,6 +1,7 @@
 package com.beifanghui.backend.refund.application;
 
 import com.beifanghui.backend.identity.web.AuthenticatedPrincipal;
+import com.beifanghui.backend.order.domain.OrderStatePolicy;
 import com.beifanghui.backend.refund.api.RefundResponse;
 import com.beifanghui.backend.shared.error.BusinessException;
 import com.beifanghui.backend.shared.error.CommonErrorCode;
@@ -38,7 +39,7 @@ public class MockRefundService {
         if (duplicate != null) return duplicate;
 
         RefundOrder order = lockOwnedOrder(userId, orderId);
-        if (!"PAID".equals(order.status()) && !"READY".equals(order.status())) {
+        if (!OrderStatePolicy.canRefund(order.status())) {
             throw new BusinessException(CommonErrorCode.REFUND_CONFLICT,
                     "只有已支付且未使用的订单可以退款，当前状态为 " + order.status());
         }

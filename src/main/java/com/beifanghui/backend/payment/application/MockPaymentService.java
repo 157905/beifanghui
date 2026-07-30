@@ -1,6 +1,7 @@
 package com.beifanghui.backend.payment.application;
 
 import com.beifanghui.backend.identity.web.AuthenticatedPrincipal;
+import com.beifanghui.backend.order.domain.OrderStatePolicy;
 import com.beifanghui.backend.payment.api.PaymentResponse;
 import com.beifanghui.backend.shared.error.BusinessException;
 import com.beifanghui.backend.shared.error.CommonErrorCode;
@@ -26,10 +27,15 @@ public class MockPaymentService {
     private static final DateTimeFormatter PAYMENT_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private final JdbcTemplate jdbcTemplate;
     private final VerificationTicketService verificationTicketService;
+    private final PaymentGateway paymentGateway;
 
-    public MockPaymentService(JdbcTemplate jdbcTemplate, VerificationTicketService verificationTicketService) {
+    public MockPaymentService(
+            JdbcTemplate jdbcTemplate,
+            VerificationTicketService verificationTicketService,
+            PaymentGateway paymentGateway) {
         this.jdbcTemplate = jdbcTemplate;
         this.verificationTicketService = verificationTicketService;
+        this.paymentGateway = paymentGateway;
     }
 
     @Transactional
@@ -42,19 +48,20 @@ public class MockPaymentService {
             verificationTicketService.issueOrderTickets(orderId);
             return completed;
         }
-        if (!"PENDING_PAYMENT".equals(order.status())) {
+        if (!OrderStatePolicy.canPay(order.status())) {
             throw new BusinessException(CommonErrorCode.PAYMENT_CONFLICT,
                     "只有待支付订单可以支付，当前状态为 " + order.status());
         }
         if (order.expiresAt() != null && order.expiresAt().isBefore(LocalDateTime.now())) {
             throw new BusinessException(CommonErrorCode.PAYMENT_CONFLICT, "订单已超过支付截止时间");
         }
-        String transactionId = "MOCK:" + orderId + ":" + idempotencyKey;
-        PaymentResponse duplicate = findByTransactionId(transactionId);
+        PaymentGateway.PaymentExecution execution = paymentGateway.execute(
+                new PaymentGateway.PaymentCommand(orderId, order.payableAmountCent(), "CNY", idempotencyKey));
+        PaymentResponse duplicate = findByTransactionId(execution.transactionId());
         if (duplicate != null) return duplicate;
 
         String paymentNo = nextPaymentNo();
-        long paymentId = insertPayment(order, paymentNo, transactionId);
+        long paymentId = insertPayment(order, paymentNo, execution);
         int changed = jdbcTemplate.update("""
                 UPDATE bf_order SET status = 'PAID', paid_amount_cent = payable_amount_cent
                 WHERE id = ? AND user_id = ? AND status = 'PENDING_PAYMENT'
@@ -70,19 +77,25 @@ public class MockPaymentService {
         return findPayment(paymentId);
     }
 
-    private long insertPayment(PaymentOrder order, String paymentNo, String transactionId) {
+    private long insertPayment(
+            PaymentOrder order,
+            String paymentNo,
+            PaymentGateway.PaymentExecution execution) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO bf_payment
                     (order_id, payment_no, channel, transaction_id, amount_cent, status, paid_at, callback_payload)
-                    VALUES (?, ?, 'MOCK', ?, ?, 'SUCCESS', CURRENT_TIMESTAMP,
-                            JSON_OBJECT('source', 'IDEA_MOCK_PAYMENT', 'verified', true))
+                    VALUES (?, ?, ?, ?, ?, 'SUCCESS', CURRENT_TIMESTAMP,
+                            JSON_OBJECT('source', ?, 'verified', ?))
                     """, Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, order.id());
             statement.setString(2, paymentNo);
-            statement.setString(3, transactionId);
-            statement.setLong(4, order.payableAmountCent());
+            statement.setString(3, execution.channel());
+            statement.setString(4, execution.transactionId());
+            statement.setLong(5, order.payableAmountCent());
+            statement.setString(6, execution.source());
+            statement.setBoolean(7, execution.verified());
             return statement;
         }, keys);
         return keys.getKey().longValue();

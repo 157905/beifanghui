@@ -3,6 +3,7 @@ package com.beifanghui.backend.identity.web;
 import com.beifanghui.backend.identity.api.MockLoginRequest;
 import com.beifanghui.backend.identity.api.MockLoginResponse;
 import com.beifanghui.backend.identity.application.MockLoginService;
+import com.beifanghui.backend.identity.infrastructure.InMemoryAccessTokenService;
 import com.beifanghui.backend.shared.error.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -14,11 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AuthenticationInterceptorTests {
 
-    private final MockLoginService loginService = new MockLoginService();
-    private final AuthenticationInterceptor interceptor = new AuthenticationInterceptor(loginService);
+    private final InMemoryAccessTokenService tokenService = new InMemoryAccessTokenService();
+    private final MockLoginService loginService = new MockLoginService(tokenService);
+    private final AuthenticationInterceptor interceptor = new AuthenticationInterceptor(tokenService);
 
     @Test
-    void shouldAuthenticateMatchingUserEndpoint() {
+    void 用户令牌可以访问用户端接口() {
         MockLoginResponse login = loginService.login(new MockLoginRequest("殷子聪", "USER"));
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/app/access/me");
         request.addHeader("Authorization", "Bearer " + login.accessToken());
@@ -29,7 +31,7 @@ class AuthenticationInterceptorTests {
     }
 
     @Test
-    void shouldRejectCrossTerminalAccess() {
+    void 拒绝用户令牌访问管理端接口() {
         MockLoginResponse login = loginService.login(new MockLoginRequest("普通用户", "USER"));
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/admin/access/me");
         request.addHeader("Authorization", "Bearer " + login.accessToken());
