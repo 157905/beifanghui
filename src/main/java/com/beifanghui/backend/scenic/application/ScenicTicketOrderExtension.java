@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,9 @@ public class ScenicTicketOrderExtension implements OrderBusinessExtension {
 
     @Override
     public void validate(OrderBusinessContext context) {
+        if (context.serviceDate() == null || context.serviceDate().isBefore(LocalDate.now())) {
+            throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "游玩日期不能早于今天");
+        }
         TicketRule rule = ticketRule(context.skuId());
         List<Visitor> visitors = visitors(context.businessData());
         if (rule.maxPerOrder() != null && context.quantity() > rule.maxPerOrder()) {

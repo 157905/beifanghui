@@ -1,0 +1,21 @@
+-- 在V9的31天开发库存基础上，补齐第31—365天，避免联调数据短期过期。
+INSERT INTO bf_inventory
+(sku_id,business_date,time_slot,total_quantity,available_quantity,price_cent)
+SELECT sku.id,DATE_ADD(CURRENT_DATE,INTERVAL days.day_offset DAY),'',200,200,sku.price_cent
+FROM bf_resource_sku sku
+CROSS JOIN (
+    SELECT ones.n+tens.n+hundreds.n day_offset
+    FROM (SELECT 0 n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+          UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) ones
+    CROSS JOIN (SELECT 0 n UNION ALL SELECT 10 UNION ALL SELECT 20 UNION ALL SELECT 30 UNION ALL SELECT 40
+                UNION ALL SELECT 50 UNION ALL SELECT 60 UNION ALL SELECT 70 UNION ALL SELECT 80 UNION ALL SELECT 90) tens
+    CROSS JOIN (SELECT 0 n UNION ALL SELECT 100 UNION ALL SELECT 200 UNION ALL SELECT 300) hundreds
+    WHERE ones.n+tens.n+hundreds.n BETWEEN 31 AND 365
+) days
+WHERE sku.sku_code IN ('SCENIC_WEAPON_ADULT_001','SCENIC_WUDANGZHAO_ADULT_001','SCENIC_MEIDAIZHAO_ADULT_001',
+                       'SCENIC_SAIHANTALA_SERVICE_001','SCENIC_NANHAI_ADULT_001')
+AND NOT EXISTS (
+    SELECT 1 FROM bf_inventory inv
+    WHERE inv.sku_id=sku.id AND inv.business_date=DATE_ADD(CURRENT_DATE,INTERVAL days.day_offset DAY)
+      AND inv.time_slot=''
+);

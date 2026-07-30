@@ -187,3 +187,77 @@ Authorization: Bearer {{opsToken}}
 ### 24. 查询景区订单的脱敏游客信息：使用第8步自动保存的 orderId
 GET http://localhost:8080/api/v1/app/scenic/orders/{{orderId}}/visitors
 Authorization: Bearer {{userToken}}
+
+### 25. 查询文旅景区列表：自动保存第一个景区ID
+GET http://localhost:8080/api/v1/app/scenic-spots?page=1&pageSize=10
+Authorization: Bearer {{userToken}}
+
+> {%
+    client.global.set("scenicSpotId", response.body.data.items[0].id);
+%}
+
+### 26. 查询景区详情：使用第25步自动保存的景区ID
+GET http://localhost:8080/api/v1/app/scenic-spots/{{scenicSpotId}}
+Authorization: Bearer {{userToken}}
+
+### 27. 查询今天可预订的票种：自动生成今天日期并保存第一个SKU ID
+< {%
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const serviceDate = `${year}-${month}-${day}`;
+    request.variables.set("scenicServiceDate", serviceDate);
+    client.global.set("scenicServiceDate", serviceDate);
+%}
+GET http://localhost:8080/api/v1/app/scenic-spots/{{scenicSpotId}}/tickets?serviceDate={{scenicServiceDate}}
+Authorization: Bearer {{userToken}}
+
+> {%
+    client.global.set("scenicSkuId", response.body.data[0].skuId);
+%}
+
+### 28. 创建景区门票订单：实名游客数量必须与购票数量一致
+POST http://localhost:8080/api/v1/app/orders
+Authorization: Bearer {{userToken}}
+Idempotency-Key: scenic-order-{{$timestamp}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "skuId": {{scenicSkuId}},
+      "quantity": 1,
+      "serviceDate": "{{scenicServiceDate}}",
+      "timeSlot": "",
+      "businessData": {
+        "visitors": [
+          {
+            "name": "殷子聪",
+            "mobile": "13800138000",
+            "idType": "ID_CARD",
+            "idNo": "150204199001011234"
+          }
+        ]
+      }
+    }
+  ],
+  "remark": "文旅景区预订模块联调订单"
+}
+
+> {%
+    client.global.set("scenicOrderId", response.body.data.id);
+%}
+
+### 29. 模拟支付景区订单：成功后按购票数量生成电子票
+POST http://localhost:8080/api/v1/app/orders/{{scenicOrderId}}/mock-pay
+Authorization: Bearer {{userToken}}
+Idempotency-Key: scenic-payment-{{$timestamp}}
+
+### 30. 查询景区电子票
+GET http://localhost:8080/api/v1/app/orders/{{scenicOrderId}}/tickets
+Authorization: Bearer {{userToken}}
+
+### 31. 查询景区订单脱敏游客信息
+GET http://localhost:8080/api/v1/app/scenic/orders/{{scenicOrderId}}/visitors
+Authorization: Bearer {{userToken}}

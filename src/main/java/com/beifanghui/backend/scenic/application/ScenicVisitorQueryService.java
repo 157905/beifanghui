@@ -22,7 +22,7 @@ public class ScenicVisitorQueryService {
         Integer owned=jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM bf_order o JOIN bf_user u ON u.id=o.user_id
                 WHERE o.id=? AND u.wechat_openid=?
-                """,Integer.class,orderId,"mock:"+principal.userId());
+                """,Integer.class,orderId,principal.databaseOpenId());
         if(owned==null||owned==0) throw new BusinessException(CommonErrorCode.NOT_FOUND,"订单不存在或无权访问");
         return jdbcTemplate.query("""
                 SELECT p.id,p.order_item_id,p.person_type,p.name_cipher,p.mobile_cipher,p.id_type,p.id_no_cipher
