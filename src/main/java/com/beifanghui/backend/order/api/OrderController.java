@@ -2,6 +2,7 @@ package com.beifanghui.backend.order.api;
 
 import com.beifanghui.backend.identity.web.CurrentPrincipal;
 import com.beifanghui.backend.order.application.OrderApplicationService;
+import com.beifanghui.backend.order.application.OrderTimelineService;
 import com.beifanghui.backend.shared.api.ApiResponse;
 import com.beifanghui.backend.shared.api.PageResponse;
 import com.beifanghui.backend.shared.web.TraceIds;
@@ -19,8 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/app/orders")
 public class OrderController {
     private final OrderApplicationService orderService;
+    private final OrderTimelineService timelineService;
 
-    public OrderController(OrderApplicationService orderService) { this.orderService = orderService; }
+    public OrderController(OrderApplicationService orderService, OrderTimelineService timelineService) {
+        this.orderService = orderService;
+        this.timelineService = timelineService;
+    }
 
     @PostMapping
     public ApiResponse<OrderResponse> create(@RequestHeader("Idempotency-Key") String idempotencyKey,
@@ -40,6 +45,11 @@ public class OrderController {
     @GetMapping("/{orderId}")
     public ApiResponse<OrderResponse> detail(@PathVariable long orderId, HttpServletRequest request) {
         return ApiResponse.success(orderService.detail(CurrentPrincipal.from(request), orderId), TraceIds.from(request));
+    }
+
+    @GetMapping("/{orderId}/timeline")
+    public ApiResponse<OrderTimelineResponse> timeline(@PathVariable long orderId, HttpServletRequest request) {
+        return ApiResponse.success(timelineService.timeline(CurrentPrincipal.from(request), orderId), TraceIds.from(request));
     }
 
     @PostMapping("/{orderId}/cancel")

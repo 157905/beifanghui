@@ -39,6 +39,22 @@ Idempotency-Key: shared-payment-001
 GET {{baseUrl}}/api/v1/app/orders/{{orderId}}/tickets
 Authorization: Bearer {{userToken}}
 
+### Order payment/refund/verification timeline
+GET {{baseUrl}}/api/v1/app/orders/{{orderId}}/timeline
+Authorization: Bearer {{userToken}}
+
+### Admin order list
+GET {{baseUrl}}/api/v1/admin/orders?page=1&pageSize=20
+Authorization: Bearer {{adminToken}}
+
+### Admin order detail
+GET {{baseUrl}}/api/v1/admin/orders/{{orderId}}
+Authorization: Bearer {{adminToken}}
+
+### Admin scans overdue unpaid orders (also runs automatically every minute)
+POST {{baseUrl}}/api/v1/admin/orders/expire-overdue
+Authorization: Bearer {{adminToken}}
+
 ### Mock refund (only for a paid and unused order)
 POST {{baseUrl}}/api/v1/app/orders/{{orderId}}/mock-refund
 Authorization: Bearer {{userToken}}
