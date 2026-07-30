@@ -1,7 +1,7 @@
 package com.beifanghui.backend.identity.application;
 
+import com.beifanghui.backend.identity.api.LoginResponse;
 import com.beifanghui.backend.identity.api.MockLoginRequest;
-import com.beifanghui.backend.identity.api.MockLoginResponse;
 import com.beifanghui.backend.identity.infrastructure.InMemoryAccessTokenService;
 import com.beifanghui.backend.shared.error.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -17,7 +17,7 @@ class MockLoginServiceTests {
 
     @Test
     void 默认创建用户端会话() {
-        MockLoginResponse response = service.login(new MockLoginRequest("殷子聪", null));
+        LoginResponse response = service.login(new MockLoginRequest("殷子聪", null));
 
         assertEquals("USER", response.user().accountType());
         assertEquals("Bearer", response.tokenType());

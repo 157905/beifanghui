@@ -1,6 +1,6 @@
 package com.beifanghui.backend.identity.api;
 
-import com.beifanghui.backend.identity.application.MockLoginService;
+import com.beifanghui.backend.identity.application.WechatLoginService;
 import com.beifanghui.backend.shared.api.ApiResponse;
 import com.beifanghui.backend.shared.web.TraceIds;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,18 +11,18 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/app/auth")
-public class MockAuthController {
+public class WechatAuthController {
 
-    private final MockLoginService mockLoginService;
+    private final WechatLoginService wechatLoginService;
 
-    public MockAuthController(MockLoginService mockLoginService) {
-        this.mockLoginService = mockLoginService;
+    public WechatAuthController(WechatLoginService wechatLoginService) {
+        this.wechatLoginService = wechatLoginService;
     }
 
-    @PostMapping("/mock-login")
-    public ApiResponse<LoginResponse> mockLogin(
-            @RequestBody MockLoginRequest body,
+    @PostMapping("/wechat-login")
+    public ApiResponse<LoginResponse> wechatLogin(
+            @RequestBody WechatLoginRequest body,
             HttpServletRequest request) {
-        return ApiResponse.success("模拟登录成功", mockLoginService.login(body), TraceIds.from(request));
+        return ApiResponse.success("微信登录成功", wechatLoginService.login(body), TraceIds.from(request));
     }
 }

@@ -24,7 +24,8 @@ public class WebAuthenticationConfiguration implements WebMvcConfigurer {
                 .addPathPatterns("/api/v1/app/**", "/api/v1/admin/**", "/api/v1/ops/**")
                 .excludePathPatterns(
                         "/api/v1/app/system/health",
-                        "/api/v1/app/auth/mock-login");
+                        "/api/v1/app/auth/mock-login",
+                        "/api/v1/app/auth/wechat-login");
         registry.addInterceptor(rateLimitInterceptor)
                 .addPathPatterns("/api/v1/**");
     }

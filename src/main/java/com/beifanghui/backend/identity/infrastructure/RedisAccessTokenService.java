@@ -48,6 +48,8 @@ public class RedisAccessTokenService implements AccessTokenService {
                 "userId", principal.userId(),
                 "displayName", principal.displayName(),
                 "accountType", principal.accountType(),
+                "identityProvider", principal.identityProvider(),
+                "externalIdentity", principal.externalIdentity() == null ? "" : principal.externalIdentity(),
                 "roles", String.join(ROLE_SEPARATOR, principal.roles())));
         redisTemplate.expire(redisKey, tokenTtl);
         return session;
@@ -67,7 +69,9 @@ public class RedisAccessTokenService implements AccessTokenService {
                 field(values, "userId"),
                 field(values, "displayName"),
                 field(values, "accountType"),
-                roles);
+                roles,
+                optionalField(values, "identityProvider", "MOCK"),
+                optionalField(values, "externalIdentity", ""));
         AccessSession session = new AccessSession(
                 accessToken,
                 field(values, "tokenType"),
@@ -95,5 +99,10 @@ public class RedisAccessTokenService implements AccessTokenService {
             throw new IllegalStateException("Redis 登录会话缺少字段：" + name);
         }
         return value.toString();
+    }
+
+    private String optionalField(Map<Object, Object> values, String name, String defaultValue) {
+        Object value = values.get(name);
+        return value == null ? defaultValue : value.toString();
     }
 }

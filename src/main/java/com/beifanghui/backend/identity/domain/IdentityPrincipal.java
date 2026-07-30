@@ -6,5 +6,15 @@ public record IdentityPrincipal(
         String userId,
         String displayName,
         String accountType,
-        List<String> roles) {
+        List<String> roles,
+        String identityProvider,
+        String externalIdentity) {
+
+    public IdentityPrincipal(
+            String userId,
+            String displayName,
+            String accountType,
+            List<String> roles) {
+        this(userId, displayName, accountType, roles, "MOCK", null);
+    }
 }

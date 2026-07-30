@@ -1,7 +1,7 @@
 package com.beifanghui.backend.identity.web;
 
+import com.beifanghui.backend.identity.api.LoginResponse;
 import com.beifanghui.backend.identity.api.MockLoginRequest;
-import com.beifanghui.backend.identity.api.MockLoginResponse;
 import com.beifanghui.backend.identity.application.MockLoginService;
 import com.beifanghui.backend.identity.infrastructure.InMemoryAccessTokenService;
 import com.beifanghui.backend.shared.error.BusinessException;
@@ -21,7 +21,7 @@ class AuthenticationInterceptorTests {
 
     @Test
     void 用户令牌可以访问用户端接口() {
-        MockLoginResponse login = loginService.login(new MockLoginRequest("殷子聪", "USER"));
+        LoginResponse login = loginService.login(new MockLoginRequest("殷子聪", "USER"));
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/app/access/me");
         request.addHeader("Authorization", "Bearer " + login.accessToken());
 
@@ -32,7 +32,7 @@ class AuthenticationInterceptorTests {
 
     @Test
     void 拒绝用户令牌访问管理端接口() {
-        MockLoginResponse login = loginService.login(new MockLoginRequest("普通用户", "USER"));
+        LoginResponse login = loginService.login(new MockLoginRequest("普通用户", "USER"));
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/admin/access/me");
         request.addHeader("Authorization", "Bearer " + login.accessToken());
 

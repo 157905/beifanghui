@@ -1,7 +1,7 @@
 package com.beifanghui.backend.identity.application;
 
+import com.beifanghui.backend.identity.api.LoginResponse;
 import com.beifanghui.backend.identity.api.MockLoginRequest;
-import com.beifanghui.backend.identity.api.MockLoginResponse;
 import com.beifanghui.backend.identity.domain.AccessSession;
 import com.beifanghui.backend.identity.domain.IdentityPrincipal;
 import com.beifanghui.backend.shared.error.BusinessException;
@@ -25,7 +25,7 @@ public class MockLoginService {
         this.accessTokenService = accessTokenService;
     }
 
-    public MockLoginResponse login(MockLoginRequest request) {
+    public LoginResponse login(MockLoginRequest request) {
         if (request == null || !StringUtils.hasText(request.displayName())) {
             throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "displayName 不能为空");
         }
@@ -45,14 +45,6 @@ public class MockLoginService {
         IdentityPrincipal principal = new IdentityPrincipal(
                 stableUserId, displayName, accountType, List.of("ROLE_" + accountType));
         AccessSession session = accessTokenService.issue(principal);
-        return new MockLoginResponse(
-                session.accessToken(),
-                session.tokenType(),
-                session.expiresAt(),
-                new MockLoginResponse.MockPrincipal(
-                        principal.userId(),
-                        principal.displayName(),
-                        principal.accountType(),
-                        principal.roles()));
+        return LoginResponse.from(session);
     }
 }

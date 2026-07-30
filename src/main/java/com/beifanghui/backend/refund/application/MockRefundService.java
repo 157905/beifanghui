@@ -176,7 +176,7 @@ public class MockRefundService {
 
     private long requireDatabaseUser(AuthenticatedPrincipal principal) {
         List<Long> ids = jdbcTemplate.queryForList("SELECT id FROM bf_user WHERE wechat_openid=?", Long.class,
-                "mock:" + principal.userId());
+                principal.databaseOpenId());
         if (ids.isEmpty()) throw new BusinessException(CommonErrorCode.NOT_FOUND, "当前用户尚无业务数据");
         return ids.get(0);
     }

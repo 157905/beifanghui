@@ -36,6 +36,9 @@ class OrderLifecycleIT {
             "integration-user", "集成测试用户", "USER", List.of("ROLE_USER"));
     private static final AuthenticatedPrincipal OPS = new AuthenticatedPrincipal(
             "integration-ops", "集成测试运维", "OPS", List.of("ROLE_OPS"));
+    private static final AuthenticatedPrincipal WECHAT_USER = new AuthenticatedPrincipal(
+            "wx-integration-user", "微信集成测试用户", "USER", List.of("ROLE_USER"),
+            "WECHAT", "openid-order-integration-test");
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -103,6 +106,24 @@ class OrderLifecycleIT {
         assertEquals("USED", consumed.status());
         assertNotNull(consumed.verifiedAt());
         assertEquals("COMPLETED", orderService.detail(USER, order.id()).status());
+    }
+
+    @Test
+    void 微信用户创建订单时保存真实OpenId() {
+        CreateOrderRequest.Item item = new CreateOrderRequest.Item(
+                skuId, 1, LocalDate.now(), "", Map.of());
+
+        OrderResponse order = orderService.create(
+                WECHAT_USER,
+                "it-wechat-order",
+                new CreateOrderRequest(null, List.of(item), "微信身份数据库映射测试"));
+
+        String openId = jdbcTemplate.queryForObject("""
+                SELECT u.wechat_openid
+                FROM bf_order o JOIN bf_user u ON u.id = o.user_id
+                WHERE o.id = ?
+                """, String.class, order.id());
+        assertEquals("openid-order-integration-test", openId);
     }
 
     private OrderResponse createOrder(String idempotencyKey) {

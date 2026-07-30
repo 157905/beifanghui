@@ -147,7 +147,7 @@ public class MockPaymentService {
 
     private long requireDatabaseUser(AuthenticatedPrincipal principal) {
         List<Long> ids = jdbcTemplate.queryForList("SELECT id FROM bf_user WHERE wechat_openid = ?",
-                Long.class, "mock:" + principal.userId());
+                Long.class, principal.databaseOpenId());
         if (ids.isEmpty()) throw new BusinessException(CommonErrorCode.NOT_FOUND, "当前用户尚未创建订单记录");
         return ids.get(0);
     }

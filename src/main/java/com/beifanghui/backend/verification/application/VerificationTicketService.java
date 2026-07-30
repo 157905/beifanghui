@@ -143,13 +143,13 @@ public class VerificationTicketService {
 
     private long requireDatabaseUser(AuthenticatedPrincipal principal) {
         List<Long> ids = jdbcTemplate.queryForList("SELECT id FROM bf_user WHERE wechat_openid=?", Long.class,
-                "mock:" + principal.userId());
+                principal.databaseOpenId());
         if (ids.isEmpty()) throw new BusinessException(CommonErrorCode.NOT_FOUND, "当前用户尚无业务数据");
         return ids.get(0);
     }
 
     private long ensureDatabaseOperator(AuthenticatedPrincipal principal) {
-        String openid = "mock:" + principal.userId();
+        String openid = principal.databaseOpenId();
         jdbcTemplate.update("""
                 INSERT INTO bf_user (wechat_openid, nickname, status)
                 VALUES (?, ?, 'ACTIVE') ON DUPLICATE KEY UPDATE nickname=VALUES(nickname), status='ACTIVE'

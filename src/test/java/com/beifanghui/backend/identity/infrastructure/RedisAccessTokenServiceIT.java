@@ -40,9 +40,14 @@ class RedisAccessTokenServiceIT {
     }
 
     @Test
-    void 令牌可以跨服务实例读取并撤销() {
+    void 微信身份令牌可以跨服务实例读取并撤销() {
         IdentityPrincipal principal = new IdentityPrincipal(
-                "redis-user-1", "Redis测试用户", "USER", List.of("ROLE_USER"));
+                "wx-internal-user-1",
+                "Redis测试用户",
+                "USER",
+                List.of("ROLE_USER"),
+                "WECHAT",
+                "openid-redis-test");
         AccessSession issued = service.issue(principal);
         RedisAccessTokenService anotherInstance = new RedisAccessTokenService(
                 redisTemplate, Duration.ofMinutes(5));
@@ -50,6 +55,8 @@ class RedisAccessTokenServiceIT {
         AccessSession loaded = anotherInstance.find(issued.accessToken());
         assertNotNull(loaded);
         assertEquals(principal.userId(), loaded.principal().userId());
+        assertEquals("WECHAT", loaded.principal().identityProvider());
+        assertEquals("openid-redis-test", loaded.principal().externalIdentity());
 
         anotherInstance.revoke(issued.accessToken());
         assertNull(service.find(issued.accessToken()));

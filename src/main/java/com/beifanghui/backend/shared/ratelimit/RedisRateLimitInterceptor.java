@@ -78,7 +78,8 @@ public class RedisRateLimitInterceptor implements HandlerInterceptor {
     }
 
     private Rule matchRule(String uri) {
-        if ("/api/v1/app/auth/mock-login".equals(uri)) {
+        if ("/api/v1/app/auth/mock-login".equals(uri)
+                || "/api/v1/app/auth/wechat-login".equals(uri)) {
             return new Rule("login", properties.getLoginLimit());
         }
         if ("/api/v1/app/orders".equals(uri)) {

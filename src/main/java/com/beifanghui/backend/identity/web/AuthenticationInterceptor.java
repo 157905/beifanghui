@@ -45,7 +45,8 @@ public class AuthenticationInterceptor implements HandlerInterceptor {
         }
 
         request.setAttribute(PRINCIPAL_ATTRIBUTE, new AuthenticatedPrincipal(
-                source.userId(), source.displayName(), source.accountType(), source.roles()));
+                source.userId(), source.displayName(), source.accountType(), source.roles(),
+                source.identityProvider(), source.externalIdentity()));
         return true;
     }
 

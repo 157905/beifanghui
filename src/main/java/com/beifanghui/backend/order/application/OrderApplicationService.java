@@ -259,7 +259,7 @@ public class OrderApplicationService {
     }
 
     private String mockOpenid(AuthenticatedPrincipal principal) {
-        return "mock:" + principal.userId();
+        return principal.databaseOpenId();
     }
 
     private OrderResponse findByClientRequestId(long userId, String idempotencyKey) {
