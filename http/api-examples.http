@@ -1,12 +1,11 @@
-@userToken = 请粘贴普通用户登录返回的accessToken
-@adminToken = 请粘贴管理员登录返回的accessToken
-@opsToken = 请粘贴运维人员登录返回的accessToken
-@orderId = 1
+# 登录接口会通过响应脚本自动保存 userToken、adminToken 和 opsToken。
+# 后端每次重启后，都需要重新执行第2、3、4步生成新令牌。
+# 第8步创建订单成功后会自动保存 orderId。
 
 ### 1. 健康检查：确认后端已经启动
 GET http://localhost:8080/api/v1/app/system/health
 
-### 2. 普通用户模拟登录：执行后复制 data.accessToken 到文件顶部的 userToken
+### 2. 普通用户模拟登录：成功后自动保存 userToken
 POST http://localhost:8080/api/v1/app/auth/mock-login
 Content-Type: application/json
 
@@ -15,7 +14,11 @@ Content-Type: application/json
   "accountType": "USER"
 }
 
-### 3. 管理员模拟登录：执行后复制 data.accessToken 到文件顶部的 adminToken
+> {%
+    client.global.set("userToken", response.body.data.accessToken);
+%}
+
+### 3. 管理员模拟登录：成功后自动保存 adminToken
 POST http://localhost:8080/api/v1/app/auth/mock-login
 Content-Type: application/json
 
@@ -24,7 +27,11 @@ Content-Type: application/json
   "accountType": "ADMIN"
 }
 
-### 4. 运维人员模拟登录：执行后复制 data.accessToken 到文件顶部的 opsToken
+> {%
+    client.global.set("adminToken", response.body.data.accessToken);
+%}
+
+### 4. 运维人员模拟登录：成功后自动保存 opsToken
 POST http://localhost:8080/api/v1/app/auth/mock-login
 Content-Type: application/json
 
@@ -32,6 +39,10 @@ Content-Type: application/json
   "displayName": "审计运维",
   "accountType": "OPS"
 }
+
+> {%
+    client.global.set("opsToken", response.body.data.accessToken);
+%}
 
 ### 5. 查询已上架资源列表
 GET http://localhost:8080/api/v1/app/resources?page=1&pageSize=20
@@ -63,11 +74,15 @@ Content-Type: application/json
   "remark": "模块联调订单"
 }
 
+> {%
+    client.global.set("orderId", response.body.data.id);
+%}
+
 ### 9. 查询我的订单列表
 GET http://localhost:8080/api/v1/app/orders?page=1&pageSize=20
 Authorization: Bearer {{userToken}}
 
-### 10. 查询订单详情：修改文件顶部的 orderId
+### 10. 查询订单详情：使用第8步自动保存的 orderId
 GET http://localhost:8080/api/v1/app/orders/{{orderId}}
 Authorization: Bearer {{userToken}}
 
