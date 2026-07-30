@@ -79,8 +79,10 @@ public class ScenicTicketOrderExtension implements OrderBusinessExtension {
             if (!(value instanceof Map<?,?> map)) {
                 throw new BusinessException(CommonErrorCode.INVALID_REQUEST,"游客信息格式不正确");
             }
-            result.add(new Visitor(text(map.get("name")),text(map.get("mobile")),
-                    text(map.get("idType")),text(map.get("idNo"))));
+            String idType = text(map.get("idType"));
+            String idNo = text(map.get("idNo"));
+            result.add(new Visitor(text(map.get("name")),text(map.get("mobile")), idType,
+                    "ID_CARD".equals(idType) && idNo != null ? idNo.toUpperCase(java.util.Locale.ROOT) : idNo));
         }
         return result;
     }

@@ -4,6 +4,7 @@ import com.beifanghui.backend.identity.web.AuthenticatedPrincipal;
 import com.beifanghui.backend.order.domain.OrderStatePolicy;
 import com.beifanghui.backend.shared.error.BusinessException;
 import com.beifanghui.backend.shared.error.CommonErrorCode;
+import com.beifanghui.backend.shared.security.SensitiveDataCipher;
 import com.beifanghui.backend.verification.api.VerificationTicketResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,11 +26,14 @@ import java.util.Locale;
 public class VerificationTicketService {
     private final JdbcTemplate jdbcTemplate;
     private final byte[] signingKey;
+    private final SensitiveDataCipher sensitiveDataCipher;
 
     public VerificationTicketService(JdbcTemplate jdbcTemplate,
-                                     @Value("${app.verification.signing-key:local-only-change-me}") String signingKey) {
+                                     @Value("${app.verification.signing-key:local-only-change-me}") String signingKey,
+                                     SensitiveDataCipher sensitiveDataCipher) {
         this.jdbcTemplate = jdbcTemplate;
         this.signingKey = signingKey.getBytes(StandardCharsets.UTF_8);
+        this.sensitiveDataCipher = sensitiveDataCipher;
     }
 
     @Transactional
@@ -40,13 +44,23 @@ public class VerificationTicketService {
                 WHERE o.id = ? AND o.status IN ('PAID', 'READY', 'COMPLETED')
                 """, (rs, n) -> new IssueItem(rs.getLong("id"), rs.getInt("quantity"), rs.getString("order_no")), orderId);
         for (IssueItem item : items) {
+            List<Long> visitorIds = jdbcTemplate.queryForList("""
+                    SELECT id FROM bf_order_person WHERE order_item_id=? AND person_type='VISITOR' ORDER BY id
+                    """, Long.class, item.orderItemId());
             for (int ticketNo = 1; ticketNo <= item.quantity(); ticketNo++) {
                 String code = ticketCode(item.orderNo(), item.orderItemId(), ticketNo);
+                Long visitorId = ticketNo <= visitorIds.size() ? visitorIds.get(ticketNo - 1) : null;
                 jdbcTemplate.update("""
                         INSERT IGNORE INTO bf_verification
-                        (order_item_id, ticket_no, verification_code_hash, status)
-                        VALUES (?, ?, ?, 'UNUSED')
-                        """, item.orderItemId(), ticketNo, sha256(code));
+                        (order_item_id, order_person_id, ticket_no, verification_code_hash, status)
+                        VALUES (?, ?, ?, ?, 'UNUSED')
+                        """, item.orderItemId(), visitorId, ticketNo, sha256(code));
+                if (visitorId != null) {
+                    jdbcTemplate.update("""
+                            UPDATE bf_verification SET order_person_id=?
+                            WHERE order_item_id=? AND ticket_no=? AND order_person_id IS NULL
+                            """, visitorId, item.orderItemId(), ticketNo);
+                }
             }
         }
     }
@@ -85,19 +99,30 @@ public class VerificationTicketService {
         }
         String normalizedCode = code.trim().toUpperCase(Locale.ROOT);
         long operatorId = ensureDatabaseOperator(operator);
-        List<LockedTicket> rows = jdbcTemplate.query("""
-                SELECT v.id, v.ticket_no, v.status, i.id order_item_id,
-                       i.resource_name, i.resource_type, i.service_date, o.id order_id, o.order_no, o.status order_status
-                FROM bf_verification v
-                JOIN bf_order_item i ON i.id = v.order_item_id
-                JOIN bf_order o ON o.id = i.order_id
-                WHERE v.verification_code_hash = ? FOR UPDATE
-                """, (rs, n) -> new LockedTicket(rs.getLong("id"), rs.getInt("ticket_no"),
-                rs.getString("status"), rs.getLong("order_item_id"), rs.getString("resource_name"),
-                rs.getString("resource_type"), rs.getObject("service_date", LocalDate.class),
-                rs.getLong("order_id"), rs.getString("order_no"), rs.getString("order_status")), sha256(normalizedCode));
+        List<LockedTicket> rows = jdbcTemplate.query(ticketLockSelect() + " WHERE v.verification_code_hash=? FOR UPDATE",
+                lockedTicketMapper(), sha256(normalizedCode));
         if (rows.isEmpty()) throw new BusinessException(CommonErrorCode.NOT_FOUND, "核销码不存在");
-        LockedTicket ticket = rows.get(0);
+        return consumeLockedTicket(operator, operatorId, rows.get(0), "QR_CODE");
+    }
+
+    @Transactional
+    public VerificationTicketResponse consumeByIdCard(AuthenticatedPrincipal operator, String idNo) {
+        String normalizedIdNo = normalizeIdNo(idNo);
+        long operatorId = ensureDatabaseOperator(operator);
+        List<LockedTicket> rows = jdbcTemplate.query(ticketLockSelect() + """
+                JOIN bf_order_person p ON p.id=v.order_person_id
+                WHERE p.person_type='VISITOR' AND p.id_type='ID_CARD' AND p.id_no_hash=?
+                  AND v.status='UNUSED' AND i.service_date=CURRENT_DATE
+                ORDER BY v.id LIMIT 1 FOR UPDATE
+                """, lockedTicketMapper(), sensitiveDataCipher.searchHash(normalizedIdNo));
+        if (rows.isEmpty()) {
+            throw new BusinessException(CommonErrorCode.NOT_FOUND, "未找到当日可核销的实名电子票");
+        }
+        return consumeLockedTicket(operator, operatorId, rows.get(0), "ID_CARD");
+    }
+
+    private VerificationTicketResponse consumeLockedTicket(AuthenticatedPrincipal operator, long operatorId,
+                                                            LockedTicket ticket, String verificationChannel) {
         if (!"UNUSED".equals(ticket.status())) {
             throw new BusinessException(CommonErrorCode.VERIFICATION_CONFLICT, "该电子票已核销或已失效，状态为 " + ticket.status());
         }
@@ -114,13 +139,42 @@ public class VerificationTicketService {
         if (changed != 1) throw new BusinessException(CommonErrorCode.VERIFICATION_CONFLICT, "电子票已被其他工作人员核销");
         jdbcTemplate.update("""
                 INSERT INTO bf_audit_log (operator_id, action, target_type, target_id, detail)
-                VALUES (?, 'VERIFICATION_CONSUME', 'VERIFICATION', ?, JSON_OBJECT('orderId', ?, 'channel', ?))
-                """, operatorId, String.valueOf(ticket.id()), ticket.orderId(), operator.accountType());
+                VALUES (?, 'VERIFICATION_CONSUME', 'VERIFICATION', ?,
+                        JSON_OBJECT('orderId', ?, 'operatorAccountType', ?, 'verificationChannel', ?))
+                """, operatorId, String.valueOf(ticket.id()), ticket.orderId(), operator.accountType(), verificationChannel);
         completeOrderWhenAllUsed(ticket.orderId(), operatorId);
         LocalDateTime verifiedAt = jdbcTemplate.queryForObject(
                 "SELECT verified_at FROM bf_verification WHERE id=?", LocalDateTime.class, ticket.id());
         return new VerificationTicketResponse(ticket.id(), ticket.orderId(), ticket.orderNo(), ticket.orderItemId(),
                 ticket.ticketNo(), ticket.resourceName(), ticket.resourceType(), null, "USED", ticket.serviceDate(), verifiedAt);
+    }
+
+    private String ticketLockSelect() {
+        return """
+                SELECT v.id, v.ticket_no, v.status, i.id order_item_id,
+                       i.resource_name, i.resource_type, i.service_date, o.id order_id, o.order_no, o.status order_status
+                FROM bf_verification v
+                JOIN bf_order_item i ON i.id = v.order_item_id
+                JOIN bf_order o ON o.id = i.order_id
+                """;
+    }
+
+    private org.springframework.jdbc.core.RowMapper<LockedTicket> lockedTicketMapper() {
+        return (rs, n) -> new LockedTicket(rs.getLong("id"), rs.getInt("ticket_no"),
+                rs.getString("status"), rs.getLong("order_item_id"), rs.getString("resource_name"),
+                rs.getString("resource_type"), rs.getObject("service_date", LocalDate.class),
+                rs.getLong("order_id"), rs.getString("order_no"), rs.getString("order_status"));
+    }
+
+    private String normalizeIdNo(String idNo) {
+        if (!StringUtils.hasText(idNo)) {
+            throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "身份证号不能为空");
+        }
+        String normalized = idNo.trim().toUpperCase(Locale.ROOT);
+        if (normalized.length() < 6 || normalized.length() > 30) {
+            throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "身份证号长度应为6—30字符");
+        }
+        return normalized;
     }
 
     private void completeOrderWhenAllUsed(long orderId, long operatorId) {

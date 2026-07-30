@@ -21,4 +21,11 @@ public class StaffVerificationController {
                 service.consume(CurrentPrincipal.from(request), body == null ? null : body.code()),
                 TraceIds.from(request));
     }
+
+    @PostMapping({"/api/v1/admin/verifications/consume-by-id-card", "/api/v1/ops/verifications/consume-by-id-card"})
+    public ApiResponse<VerificationTicketResponse> consumeByIdCard(@RequestBody ConsumeByIdCardRequest body,
+                                                                     HttpServletRequest request) {
+        return ApiResponse.success("身份证核验入园成功", service.consumeByIdCard(
+                CurrentPrincipal.from(request), body == null ? null : body.idNo()), TraceIds.from(request));
+    }
 }

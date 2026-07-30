@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,6 +39,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ScenicBookingIT {
     private static final AuthenticatedPrincipal USER = new AuthenticatedPrincipal(
             "scenic-integration-user", "景区集成测试用户", "USER", List.of("ROLE_USER"));
+    private static final AuthenticatedPrincipal OPS = new AuthenticatedPrincipal(
+            "scenic-integration-ops", "景区核销测试人员", "OPS", List.of("ROLE_OPS"));
 
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private ScenicSpotQueryService scenicSpotQueryService;
@@ -125,6 +128,23 @@ class ScenicBookingIT {
         assertEquals(2, visitors.size());
         assertEquals("张*", visitors.get(0).maskedName());
         assertEquals("138****8000", visitors.get(0).maskedMobile());
+    }
+
+    @Test
+    void 工作人员可以按身份证核验当日实名电子票且不能重复核销() {
+        String idNo = "150204199001011234";
+        CreateOrderRequest.Item item = new CreateOrderRequest.Item(skuId, 1, LocalDate.now(), "", Map.of(
+                "visitors", List.of(Map.of("name", "王五", "mobile", "13700137000",
+                        "idType", "ID_CARD", "idNo", idNo))));
+        OrderResponse order = orderService.create(USER, "it-scenic-id-card-order",
+                new CreateOrderRequest(null, List.of(item), "身份证核验集成测试"));
+        paymentService.pay(USER, order.id(), "it-scenic-id-card-payment");
+
+        VerificationTicketResponse consumed = ticketService.consumeByIdCard(OPS, idNo);
+
+        assertEquals("USED", consumed.status());
+        assertNotNull(consumed.verifiedAt());
+        assertThrows(BusinessException.class, () -> ticketService.consumeByIdCard(OPS, idNo));
     }
 
     private int availableInventory() {
