@@ -10,6 +10,7 @@ public enum CommonErrorCode {
     INVENTORY_CONFLICT("INVENTORY_409_001", "库存不足", HttpStatus.CONFLICT),
     ORDER_CONFLICT("ORDER_409_001", "当前订单状态不允许该操作", HttpStatus.CONFLICT),
     PAYMENT_CONFLICT("PAYMENT_409_001", "当前订单不可支付", HttpStatus.CONFLICT),
+    REFUND_CONFLICT("REFUND_409_001", "当前订单不可退款", HttpStatus.CONFLICT),
     VERIFICATION_CONFLICT("VERIFICATION_409_001", "核销码当前不可使用", HttpStatus.CONFLICT),
     CONFLICT("SYSTEM_409_001", "当前状态不允许该操作", HttpStatus.CONFLICT),
     INTERNAL_ERROR("SYSTEM_500_001", "系统暂时无法处理请求", HttpStatus.INTERNAL_SERVER_ERROR);

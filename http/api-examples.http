@@ -1,0 +1,48 @@
+@baseUrl = http://localhost:8080
+@userToken = replace_with_user_access_token
+@adminToken = replace_with_admin_access_token
+@orderId = 1
+
+### Health
+GET {{baseUrl}}/api/v1/app/system/health
+
+### Login as user
+POST {{baseUrl}}/api/v1/app/auth/mock-login
+Content-Type: application/json
+
+{
+  "displayName": "模块开发人员",
+  "accountType": "USER"
+}
+
+### Resources
+GET {{baseUrl}}/api/v1/app/resources?page=1&pageSize=20
+Authorization: Bearer {{userToken}}
+
+### Create order (replace skuId and use a new key for every new order)
+POST {{baseUrl}}/api/v1/app/orders
+Authorization: Bearer {{userToken}}
+Idempotency-Key: shared-order-001
+Content-Type: application/json
+
+{
+  "items": [{"skuId": 5, "quantity": 1, "serviceDate": "2026-07-30", "timeSlot": ""}],
+  "remark": "模块联调订单"
+}
+
+### Mock pay
+POST {{baseUrl}}/api/v1/app/orders/{{orderId}}/mock-pay
+Authorization: Bearer {{userToken}}
+Idempotency-Key: shared-payment-001
+
+### Tickets
+GET {{baseUrl}}/api/v1/app/orders/{{orderId}}/tickets
+Authorization: Bearer {{userToken}}
+
+### Mock refund (only for a paid and unused order)
+POST {{baseUrl}}/api/v1/app/orders/{{orderId}}/mock-refund
+Authorization: Bearer {{userToken}}
+Idempotency-Key: shared-refund-001
+Content-Type: application/json
+
+{"reason":"模块联调退款"}
