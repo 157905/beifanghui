@@ -68,7 +68,17 @@ Content-Type: application/json
       "skuId": 5,
       "quantity": 1,
       "serviceDate": "2026-07-30",
-      "timeSlot": ""
+      "timeSlot": "",
+      "businessData": {
+        "visitors": [
+          {
+            "name": "张三",
+            "mobile": "13800138000",
+            "idType": "ID_CARD",
+            "idNo": "110101199001011234"
+          }
+        ]
+      }
     }
   ],
   "remark": "模块联调订单"
@@ -173,3 +183,7 @@ Content-Type: application/json
 ### 23. 运维人员查询审计日志
 GET http://localhost:8080/api/v1/ops/audit-logs?page=1&pageSize=20
 Authorization: Bearer {{opsToken}}
+
+### 24. 查询景区订单的脱敏游客信息：使用第8步自动保存的 orderId
+GET http://localhost:8080/api/v1/app/scenic/orders/{{orderId}}/visitors
+Authorization: Bearer {{userToken}}

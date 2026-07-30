@@ -3,6 +3,8 @@ package com.beifanghui.backend.order.application;
 import com.beifanghui.backend.identity.web.AuthenticatedPrincipal;
 import com.beifanghui.backend.order.api.CreateOrderRequest;
 import com.beifanghui.backend.order.api.OrderResponse;
+import com.beifanghui.backend.order.extension.OrderBusinessContext;
+import com.beifanghui.backend.order.extension.OrderBusinessExtensionRegistry;
 import com.beifanghui.backend.shared.api.PageResponse;
 import com.beifanghui.backend.shared.error.BusinessException;
 import com.beifanghui.backend.shared.error.CommonErrorCode;
@@ -30,9 +32,11 @@ public class OrderApplicationService {
     private static final String PENDING_PAYMENT = "PENDING_PAYMENT";
     private static final DateTimeFormatter ORDER_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private final JdbcTemplate jdbcTemplate;
+    private final OrderBusinessExtensionRegistry extensionRegistry;
 
-    public OrderApplicationService(JdbcTemplate jdbcTemplate) {
+    public OrderApplicationService(JdbcTemplate jdbcTemplate, OrderBusinessExtensionRegistry extensionRegistry) {
         this.jdbcTemplate = jdbcTemplate;
+        this.extensionRegistry = extensionRegistry;
     }
 
     @Transactional
@@ -51,6 +55,7 @@ public class OrderApplicationService {
             CreateOrderRequest.Item item = request.items().get(index);
             PricedItem priced = lockAndPrice(item);
             pricedItems.add(priced);
+            extensionRegistry.validate(toBusinessContext(item, priced));
             totalAmount = Math.addExact(totalAmount, Math.multiplyExact(priced.priceCent(), item.quantity().longValue()));
         }
 
@@ -83,7 +88,8 @@ public class OrderApplicationService {
                     VALUES (?, ?, 'ORDER_LOCK', ?, ?, ?, '创建待支付订单锁定库存')
                     """, priced.inventoryId(), orderNo, -item.quantity(), quantityAfter,
                     idempotencyKey + ":LOCK:" + index);
-            insertOrderItem(orderId, item, priced);
+            long orderItemId = insertOrderItem(orderId, item, priced);
+            extensionRegistry.save(orderId, orderItemId, toBusinessContext(item, priced));
         }
         return findOwnedOrder(userId, orderId);
     }
@@ -194,16 +200,35 @@ public class OrderApplicationService {
         return keyHolder.getKey().longValue();
     }
 
-    private void insertOrderItem(long orderId, CreateOrderRequest.Item item, PricedItem priced) {
+    private long insertOrderItem(long orderId, CreateOrderRequest.Item item, PricedItem priced) {
         long amount = Math.multiplyExact(priced.priceCent(), item.quantity().longValue());
-        jdbcTemplate.update("""
-                INSERT INTO bf_order_item
-                (order_id, sku_id, sku_code, sku_name, resource_name, resource_type,
-                 quantity, unit_price_cent, amount_cent, service_date, time_slot, snapshot)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_OBJECT('priceSource', 'INVENTORY'))
-                """, orderId, priced.skuId(), priced.skuCode(), priced.skuName(), priced.resourceName(),
-                priced.resourceType(), item.quantity(), priced.priceCent(), amount,
-                item.serviceDate(), normalizeSlot(item.timeSlot()));
+        KeyHolder keys = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO bf_order_item
+                    (order_id, sku_id, sku_code, sku_name, resource_name, resource_type,
+                     quantity, unit_price_cent, amount_cent, service_date, time_slot, snapshot)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_OBJECT('priceSource', 'INVENTORY'))
+                    """, Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, orderId);
+            statement.setLong(2, priced.skuId());
+            statement.setString(3, priced.skuCode());
+            statement.setString(4, priced.skuName());
+            statement.setString(5, priced.resourceName());
+            statement.setString(6, priced.resourceType());
+            statement.setInt(7, item.quantity());
+            statement.setLong(8, priced.priceCent());
+            statement.setLong(9, amount);
+            statement.setObject(10, item.serviceDate());
+            statement.setString(11, normalizeSlot(item.timeSlot()));
+            return statement;
+        }, keys);
+        return keys.getKey().longValue();
+    }
+
+    private OrderBusinessContext toBusinessContext(CreateOrderRequest.Item item, PricedItem priced) {
+        return new OrderBusinessContext(priced.skuId(), priced.resourceType(), item.quantity(),
+                item.serviceDate(), normalizeSlot(item.timeSlot()), item.businessData());
     }
 
     private long ensureDatabaseUser(AuthenticatedPrincipal principal) {
