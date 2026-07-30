@@ -1,14 +1,13 @@
-@baseUrl = http://localhost:8080
-@userToken = replace_with_user_access_token
+@userToken = mock_0bd77e6a0c6f41b3884737c788d90b1d
 @adminToken = replace_with_admin_access_token
 @opsToken = replace_with_ops_access_token
 @orderId = 1
 
 ### Health
-GET {{baseUrl}}/api/v1/app/system/health
+GET http://localhost:8080/api/v1/app/system/health
 
 ### Login as user
-POST {{baseUrl}}/api/v1/app/auth/mock-login
+POST http://localhost:8080/api/v1/app/auth/mock-login
 Content-Type: application/json
 
 {
@@ -17,11 +16,11 @@ Content-Type: application/json
 }
 
 ### Resources
-GET {{baseUrl}}/api/v1/app/resources?page=1&pageSize=20
+GET http://localhost:8080/api/v1/app/resources?page=1&pageSize=20
 Authorization: Bearer {{userToken}}
 
 ### Create order (replace skuId and use a new key for every new order)
-POST {{baseUrl}}/api/v1/app/orders
+POST http://localhost:8080/api/v1/app/orders
 Authorization: Bearer {{userToken}}
 Idempotency-Key: shared-order-001
 Content-Type: application/json
@@ -32,39 +31,39 @@ Content-Type: application/json
 }
 
 ### Mock pay
-POST {{baseUrl}}/api/v1/app/orders/{{orderId}}/mock-pay
+POST http://localhost:8080/api/v1/app/orders/{{orderId}}/mock-pay
 Authorization: Bearer {{userToken}}
 Idempotency-Key: shared-payment-001
 
 ### Tickets
-GET {{baseUrl}}/api/v1/app/orders/{{orderId}}/tickets
+GET http://localhost:8080/api/v1/app/orders/{{orderId}}/tickets
 Authorization: Bearer {{userToken}}
 
 ### Order payment/refund/verification timeline
-GET {{baseUrl}}/api/v1/app/orders/{{orderId}}/timeline
+GET http://localhost:8080/api/v1/app/orders/{{orderId}}/timeline
 Authorization: Bearer {{userToken}}
 
 ### Admin order list
-GET {{baseUrl}}/api/v1/admin/orders?page=1&pageSize=20
+GET http://localhost:8080/api/v1/admin/orders?page=1&pageSize=20
 Authorization: Bearer {{adminToken}}
 
 ### Admin order detail
-GET {{baseUrl}}/api/v1/admin/orders/{{orderId}}
+GET http://localhost:8080/api/v1/admin/orders/{{orderId}}
 Authorization: Bearer {{adminToken}}
 
 ### Admin scans overdue unpaid orders (also runs automatically every minute)
-POST {{baseUrl}}/api/v1/admin/orders/expire-overdue
+POST http://localhost:8080/api/v1/admin/orders/expire-overdue
 Authorization: Bearer {{adminToken}}
 
 ### Admin takes a resource offline (restore ACTIVE after testing)
-PATCH {{baseUrl}}/api/v1/admin/resources/5/status
+PATCH http://localhost:8080/api/v1/admin/resources/5/status
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 {"status":"INACTIVE"}
 
 ### Admin adjusts inventory; replace inventoryId with a real bf_inventory.id
-POST {{baseUrl}}/api/v1/admin/inventories/5/adjust
+POST http://localhost:8080/api/v1/admin/inventories/5/adjust
 Authorization: Bearer {{adminToken}}
 Idempotency-Key: shared-inventory-adjust-001
 Content-Type: application/json
@@ -72,11 +71,11 @@ Content-Type: application/json
 {"delta":-1,"remark":"共享接口联调"}
 
 ### Ops audit log
-GET {{baseUrl}}/api/v1/ops/audit-logs?page=1&pageSize=20
+GET http://localhost:8080/api/v1/ops/audit-logs?page=1&pageSize=20
 Authorization: Bearer {{opsToken}}
 
 ### Mock refund (only for a paid and unused order)
-POST {{baseUrl}}/api/v1/app/orders/{{orderId}}/mock-refund
+POST http://localhost:8080/api/v1/app/orders/{{orderId}}/mock-refund
 Authorization: Bearer {{userToken}}
 Idempotency-Key: shared-refund-001
 Content-Type: application/json
