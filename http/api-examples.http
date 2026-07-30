@@ -261,3 +261,54 @@ Authorization: Bearer {{userToken}}
 ### 31. 查询景区订单脱敏游客信息
 GET http://localhost:8080/api/v1/app/scenic/orders/{{scenicOrderId}}/visitors
 Authorization: Bearer {{userToken}}
+
+### 32. 管理员新增景区儿童票：票种编码自动生成，成功后保存SKU ID
+# 请先执行第3步管理员登录和第25步景区列表。
+POST http://localhost:8080/api/v1/admin/scenic-spots/{{scenicSpotId}}/tickets
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "skuCode": "SCENIC_CHILD_{{$timestamp}}",
+  "name": "儿童票（联调）",
+  "ticketType": "CHILD",
+  "priceCent": 4000,
+  "status": "ACTIVE",
+  "audienceRule": "适用于儿童游客，具体规则以运营配置为准",
+  "usageRule": "仅限预约日期和预约时段使用",
+  "refundRule": "未核销前可按平台规则申请退款",
+  "entryNotice": "请按预约时段入园",
+  "validDays": 1,
+  "maxPerOrder": 5,
+  "realNameRequired": false,
+  "idCardRequired": false
+}
+
+> {%
+    client.global.set("managedScenicSkuId", response.body.data.skuId);
+%}
+
+### 33. 管理员配置上午预约时段和限流库存
+# 已有订单时，totalQuantity不能小于已预订数量；不会覆盖已经锁定的名额。
+< {%
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const serviceDate = `${year}-${month}-${day}`;
+    request.variables.set("managedServiceDate", serviceDate);
+    client.global.set("managedServiceDate", serviceDate);
+%}
+PUT http://localhost:8080/api/v1/admin/scenic-tickets/{{managedScenicSkuId}}/inventories/{{managedServiceDate}}?timeSlot=09:00-12:00
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: scenic-slot-{{$timestamp}}
+Content-Type: application/json
+
+{
+  "totalQuantity": 50,
+  "priceCent": 4000
+}
+
+### 34. 用户端验证新增票种和上午场库存
+GET http://localhost:8080/api/v1/app/scenic-spots/{{scenicSpotId}}/tickets?serviceDate={{managedServiceDate}}
+Authorization: Bearer {{userToken}}
