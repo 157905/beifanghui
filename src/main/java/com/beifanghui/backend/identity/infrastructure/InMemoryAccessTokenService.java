@@ -3,6 +3,7 @@ package com.beifanghui.backend.identity.infrastructure;
 import com.beifanghui.backend.identity.application.AccessTokenService;
 import com.beifanghui.backend.identity.domain.AccessSession;
 import com.beifanghui.backend.identity.domain.IdentityPrincipal;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -11,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
+@ConditionalOnProperty(name = "app.auth.token-store", havingValue = "memory", matchIfMissing = true)
 public class InMemoryAccessTokenService implements AccessTokenService {
 
     private static final ZoneOffset CHINA_ZONE_OFFSET = ZoneOffset.ofHours(8);
