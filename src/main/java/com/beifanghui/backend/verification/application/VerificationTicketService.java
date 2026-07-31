@@ -40,15 +40,18 @@ public class VerificationTicketService {
     public void issueOrderTickets(long orderId) {
         List<IssueItem> items = jdbcTemplate.query("""
                 SELECT i.id, i.quantity, o.order_no
-                FROM bf_order_item i JOIN bf_order o ON o.id = i.order_id
+                FROM bf_order_item i
+                JOIN bf_order o ON o.id = i.order_id
+                JOIN bf_resource_sku sku ON sku.id=i.sku_id
                 WHERE o.id = ? AND o.status IN ('PAID', 'READY', 'COMPLETED')
+                  AND NOT EXISTS (SELECT 1 FROM bf_resource_package package WHERE package.package_code=sku.sku_code)
                 """, (rs, n) -> new IssueItem(rs.getLong("id"), rs.getInt("quantity"), rs.getString("order_no")), orderId);
         for (IssueItem item : items) {
             List<Long> visitorIds = jdbcTemplate.queryForList("""
                     SELECT id FROM bf_order_person WHERE order_item_id=? AND person_type='VISITOR' ORDER BY id
                     """, Long.class, item.orderItemId());
             for (int ticketNo = 1; ticketNo <= item.quantity(); ticketNo++) {
-                String code = ticketCode(item.orderNo(), item.orderItemId(), ticketNo);
+                String code = ticketCode(item.orderNo(), item.orderItemId(), null, ticketNo);
                 Long visitorId = ticketNo <= visitorIds.size() ? visitorIds.get(ticketNo - 1) : null;
                 jdbcTemplate.update("""
                         INSERT IGNORE INTO bf_verification
@@ -60,6 +63,35 @@ public class VerificationTicketService {
                             UPDATE bf_verification SET order_person_id=?
                             WHERE order_item_id=? AND ticket_no=? AND order_person_id IS NULL
                             """, visitorId, item.orderItemId(), ticketNo);
+                }
+            }
+        }
+        List<PackageIssueItem> packageItems = jdbcTemplate.query("""
+                SELECT package_item.id,package_item.order_item_id,package_item.quantity,o.order_no
+                FROM bf_order_package_item package_item
+                JOIN bf_order_item item ON item.id=package_item.order_item_id
+                JOIN bf_order o ON o.id=item.order_id
+                WHERE o.id=? AND o.status IN ('PAID','READY','COMPLETED')
+                ORDER BY package_item.id
+                """, (rs, n) -> new PackageIssueItem(rs.getLong("id"), rs.getLong("order_item_id"),
+                rs.getInt("quantity"), rs.getString("order_no")), orderId);
+        for (PackageIssueItem item : packageItems) {
+            List<Long> visitorIds = jdbcTemplate.queryForList("""
+                    SELECT id FROM bf_order_person WHERE order_item_id=? AND person_type='VISITOR' ORDER BY id
+                    """, Long.class, item.orderItemId());
+            for (int ticketNo = 1; ticketNo <= item.quantity(); ticketNo++) {
+                String code = ticketCode(item.orderNo(), item.orderItemId(), item.packageItemId(), ticketNo);
+                Long visitorId = visitorIds.isEmpty() ? null : visitorIds.get((ticketNo - 1) % visitorIds.size());
+                jdbcTemplate.update("""
+                        INSERT IGNORE INTO bf_verification
+                        (order_item_id,order_person_id,order_package_item_id,ticket_no,verification_code_hash,status)
+                        VALUES (?,?,?,?,?,'UNUSED')
+                        """, item.orderItemId(), visitorId, item.packageItemId(), ticketNo, sha256(code));
+                if (visitorId != null) {
+                    jdbcTemplate.update("""
+                            UPDATE bf_verification SET order_person_id=?
+                            WHERE order_package_item_id=? AND ticket_no=? AND order_person_id IS NULL
+                            """, visitorId, item.packageItemId(), ticketNo);
                 }
             }
         }
@@ -75,19 +107,21 @@ public class VerificationTicketService {
         }
         issueOrderTickets(orderId);
         return jdbcTemplate.query("""
-                SELECT v.id, v.ticket_no, v.status, v.verified_at,
-                       i.id order_item_id, i.resource_name, i.resource_type, i.service_date,
+                SELECT v.id, v.ticket_no, v.status, v.verified_at,v.order_package_item_id,
+                       i.id order_item_id, COALESCE(package_item.component_sku_name,i.resource_name) resource_name,
+                       COALESCE(package_item.component_resource_type,i.resource_type) resource_type, i.service_date,
                        o.id order_id, o.order_no
                 FROM bf_verification v
                 JOIN bf_order_item i ON i.id = v.order_item_id
                 JOIN bf_order o ON o.id = i.order_id
+                LEFT JOIN bf_order_package_item package_item ON package_item.id=v.order_package_item_id
                 WHERE o.id = ? AND o.user_id = ?
                 ORDER BY i.id, v.ticket_no
                 """, (rs, n) -> new VerificationTicketResponse(
                 rs.getLong("id"), rs.getLong("order_id"), rs.getString("order_no"),
                 rs.getLong("order_item_id"), rs.getInt("ticket_no"), rs.getString("resource_name"),
-                rs.getString("resource_type"), ticketCode(rs.getString("order_no"),
-                rs.getLong("order_item_id"), rs.getInt("ticket_no")), rs.getString("status"),
+                rs.getString("resource_type"), ticketCode(rs.getString("order_no"), rs.getLong("order_item_id"),
+                rs.getObject("order_package_item_id", Long.class), rs.getInt("ticket_no")), rs.getString("status"),
                 rs.getObject("service_date", LocalDate.class), rs.getObject("verified_at", LocalDateTime.class)),
                 orderId, userId);
     }
@@ -152,10 +186,13 @@ public class VerificationTicketService {
     private String ticketLockSelect() {
         return """
                 SELECT v.id, v.ticket_no, v.status, i.id order_item_id,
-                       i.resource_name, i.resource_type, i.service_date, o.id order_id, o.order_no, o.status order_status
+                       COALESCE(package_item.component_sku_name,i.resource_name) resource_name,
+                       COALESCE(package_item.component_resource_type,i.resource_type) resource_type,
+                       i.service_date, o.id order_id, o.order_no, o.status order_status
                 FROM bf_verification v
                 JOIN bf_order_item i ON i.id = v.order_item_id
                 JOIN bf_order o ON o.id = i.order_id
+                LEFT JOIN bf_order_package_item package_item ON package_item.id=v.order_package_item_id
                 """;
     }
 
@@ -211,8 +248,10 @@ public class VerificationTicketService {
         return jdbcTemplate.queryForObject("SELECT id FROM bf_user WHERE wechat_openid=?", Long.class, openid);
     }
 
-    private String ticketCode(String orderNo, long orderItemId, int ticketNo) {
-        String payload = orderNo + ":" + orderItemId + ":" + ticketNo;
+    private String ticketCode(String orderNo, long orderItemId, Long packageItemId, int ticketNo) {
+        String payload = packageItemId == null
+                ? orderNo + ":" + orderItemId + ":" + ticketNo
+                : orderNo + ":" + orderItemId + ":P" + packageItemId + ":" + ticketNo;
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(signingKey, "HmacSHA256"));
@@ -234,6 +273,7 @@ public class VerificationTicketService {
     }
 
     private record IssueItem(long orderItemId, int quantity, String orderNo) {}
+    private record PackageIssueItem(long packageItemId, long orderItemId, int quantity, String orderNo) {}
     private record LockedTicket(long id, int ticketNo, String status, long orderItemId,
                                 String resourceName, String resourceType, LocalDate serviceDate,
                                 long orderId, String orderNo, String orderStatus) {}

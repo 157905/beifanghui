@@ -7,6 +7,9 @@ import com.beifanghui.backend.scenic.api.AdminScenicSpotUpdateRequest;
 import com.beifanghui.backend.scenic.api.AdminScenicTicketCreateRequest;
 import com.beifanghui.backend.scenic.api.AdminScenicTicketResponse;
 import com.beifanghui.backend.scenic.api.AdminScenicTicketUpdateRequest;
+import com.beifanghui.backend.scenic.api.PackageComponentRequest;
+import com.beifanghui.backend.scenic.api.PackageComponentUpdateRequest;
+import com.beifanghui.backend.scenic.api.ScenicPackageResponse;
 import com.beifanghui.backend.scenic.api.ScenicInventorySetupRequest;
 import com.beifanghui.backend.scenic.api.ScenicInventorySetupResponse;
 import com.beifanghui.backend.shared.error.BusinessException;
@@ -109,6 +112,10 @@ public class AdminScenicManagementService {
         upsertTicketProfile(skuId, request.audienceRule(), request.usageRule(), request.refundRule(),
                 request.entryNotice(), request.validDays(), request.maxPerOrder(), request.realNameRequired(),
                 request.idCardRequired());
+        if ("PACKAGE".equals(normalizeTicketType(request.ticketType()))) {
+            createPackageDefinition(skuId, skuCode, request.name().trim(), request.priceCent(),
+                    normalizeStatus(request.status()));
+        }
         audit(operatorId, "SCENIC_TICKET_CREATE", "SCENIC_TICKET", skuId,
                 "JSON_OBJECT('scenicSpotId', ?, 'skuCode', ?)", scenicSpotId, skuCode);
         return findTicket(skuId);
@@ -125,6 +132,10 @@ public class AdminScenicManagementService {
                                                   AdminScenicTicketUpdateRequest request) {
         validateUpdateTicket(request);
         ScenicSkuLocked current = lockScenicSku(skuId);
+        AdminScenicTicketResponse currentTicket = findTicket(skuId);
+        if ("PACKAGE".equals(currentTicket.ticketType()) != "PACKAGE".equals(normalizeTicketType(request.ticketType()))) {
+            throw new BusinessException(CommonErrorCode.CONFLICT, "已创建的票种不能在普通票与套票之间转换");
+        }
         long operatorId = ensureOperator(principal);
         jdbcTemplate.update("""
                 UPDATE bf_resource_sku
@@ -135,9 +146,41 @@ public class AdminScenicManagementService {
         upsertTicketProfile(skuId, request.audienceRule(), request.usageRule(), request.refundRule(),
                 request.entryNotice(), request.validDays(), request.maxPerOrder(), request.realNameRequired(),
                 request.idCardRequired());
+        if ("PACKAGE".equals(currentTicket.ticketType())) {
+            jdbcTemplate.update("""
+                    UPDATE bf_resource_package SET name=?,price_cent=?,status=? WHERE package_code=?
+                    """, request.name().trim(), request.priceCent(), normalizeStatus(request.status()), current.skuCode());
+        }
         audit(operatorId, "SCENIC_TICKET_UPDATE", "SCENIC_TICKET", skuId,
                 "JSON_OBJECT('scenicSpotId', ?, 'skuCode', ?)", current.scenicSpotId(), current.skuCode());
         return findTicket(skuId);
+    }
+
+    @Transactional(readOnly = true)
+    public ScenicPackageResponse packageDetail(AuthenticatedPrincipal principal, long packageSkuId) {
+        lockPackageSku(packageSkuId);
+        return findPackageDetail(packageSkuId);
+    }
+
+    @Transactional
+    public ScenicPackageResponse replacePackageComponents(AuthenticatedPrincipal principal, long packageSkuId,
+                                                          PackageComponentUpdateRequest request) {
+        ScenicSkuLocked packageSku = lockPackageSku(packageSkuId);
+        validatePackageComponents(packageSkuId, request);
+        long packageId = packageId(packageSkuId);
+        List<PackageComponent> components = request.components().stream()
+                .map(component -> requirePackageComponent(packageSkuId, component))
+                .toList();
+        long operatorId = ensureOperator(principal);
+        jdbcTemplate.update("DELETE FROM bf_resource_package_item WHERE package_id=?", packageId);
+        for (PackageComponent component : components) {
+            jdbcTemplate.update("""
+                    INSERT INTO bf_resource_package_item(package_id,sku_id,quantity) VALUES (?,?,?)
+                    """, packageId, component.skuId(), component.quantity());
+        }
+        audit(operatorId, "SCENIC_PACKAGE_COMPONENTS_UPDATE", "SCENIC_PACKAGE", packageSkuId,
+                "JSON_OBJECT('packageCode', ?, 'componentCount', ?)", packageSku.skuCode(), components.size());
+        return findPackageDetail(packageSkuId);
     }
 
     @Transactional
@@ -275,6 +318,14 @@ public class AdminScenicManagementService {
                 nullableText(entryNotice, 65535), validDays, maxPerOrder, realNameRequired, idCardRequired);
     }
 
+    private void createPackageDefinition(long packageSkuId, String packageCode, String name, long priceCent,
+                                         String status) {
+        jdbcTemplate.update("""
+                INSERT INTO bf_resource_package(package_code,name,description,price_cent,status)
+                VALUES (?,?,NULL,?,?)
+                """, packageCode, name, priceCent, status);
+    }
+
     private ScenicSpotLocked lockScenicSpot(long scenicSpotId) {
         List<ScenicSpotLocked> rows = jdbcTemplate.query("""
                 SELECT r.id,r.site_id,s.site_code FROM bf_resource r JOIN bf_business_site s ON s.id=r.site_id
@@ -296,6 +347,25 @@ public class AdminScenicManagementService {
         return rows.get(0);
     }
 
+    private ScenicSkuLocked lockPackageSku(long packageSkuId) {
+        ScenicSkuLocked packageSku = lockScenicSku(packageSkuId);
+        List<Long> ids = jdbcTemplate.queryForList("""
+                SELECT p.id FROM bf_resource_package p
+                WHERE p.package_code=? FOR UPDATE
+                """, Long.class, packageSku.skuCode());
+        if (ids.isEmpty()) {
+            throw new BusinessException(CommonErrorCode.NOT_FOUND, "套票不存在");
+        }
+        return packageSku;
+    }
+
+    private long packageId(long packageSkuId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT p.id FROM bf_resource_package p JOIN bf_resource_sku sku ON sku.sku_code=p.package_code
+                WHERE sku.id=?
+                """, Long.class, packageSkuId);
+    }
+
     private AdminScenicSpotResponse findSpot(long scenicSpotId) {
         return jdbcTemplate.queryForObject("""
                 SELECT r.id,r.site_id,s.site_code,r.name,r.category_code,r.status
@@ -309,6 +379,27 @@ public class AdminScenicManagementService {
         List<AdminScenicTicketResponse> rows = jdbcTemplate.query(ticketSelect() + " sku.id=?", ticketMapper(), skuId);
         if (rows.isEmpty()) throw new BusinessException(CommonErrorCode.NOT_FOUND, "景区票种不存在");
         return rows.get(0);
+    }
+
+    private ScenicPackageResponse findPackageDetail(long packageSkuId) {
+        PackageHead head = jdbcTemplate.queryForObject("""
+                SELECT sku.id package_sku_id,p.id,p.package_code,p.name,p.description,p.price_cent,p.status
+                FROM bf_resource_package p JOIN bf_resource_sku sku ON sku.sku_code=p.package_code
+                WHERE sku.id=?
+                """, (rs, rowNum) -> new PackageHead(rs.getLong("package_sku_id"), rs.getLong("id"),
+                rs.getString("package_code"), rs.getString("name"), rs.getString("description"),
+                rs.getLong("price_cent"), rs.getString("status")), packageSkuId);
+        List<ScenicPackageResponse.Component> components = jdbcTemplate.query("""
+                SELECT sku.id,sku.sku_code,sku.name sku_name,r.name resource_name,r.resource_type,item.quantity
+                FROM bf_resource_package_item item
+                JOIN bf_resource_sku sku ON sku.id=item.sku_id
+                JOIN bf_resource r ON r.id=sku.resource_id
+                WHERE item.package_id=? ORDER BY sku.id
+                """, (rs, rowNum) -> new ScenicPackageResponse.Component(rs.getLong("id"),
+                rs.getString("sku_code"), rs.getString("sku_name"), rs.getString("resource_name"),
+                rs.getString("resource_type"), rs.getInt("quantity")), head.packageId());
+        return new ScenicPackageResponse(head.packageSkuId(), head.packageId(), head.packageCode(), head.name(),
+                head.description(), head.priceCent(), "CNY", head.status(), components);
     }
 
     private String ticketSelect() {
@@ -472,6 +563,42 @@ public class AdminScenicManagementService {
         }
     }
 
+    private void validatePackageComponents(long packageSkuId, PackageComponentUpdateRequest request) {
+        if (request == null || request.components() == null || request.components().size() < 2
+                || request.components().size() > 10) {
+            throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "套票组件数量范围为2—10");
+        }
+        Set<Long> uniqueSkuIds = new java.util.HashSet<>();
+        for (PackageComponentRequest component : request.components()) {
+            if (component == null || component.skuId() == null || component.skuId() <= 0
+                    || component.quantity() == null || component.quantity() < 1 || component.quantity() > 10) {
+                throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "组件SKU和数量不合法，数量范围为1—10");
+            }
+            if (component.skuId() == packageSkuId || !uniqueSkuIds.add(component.skuId())) {
+                throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "套票组件不能包含自身或重复SKU");
+            }
+        }
+    }
+
+    private PackageComponent requirePackageComponent(long packageSkuId, PackageComponentRequest request) {
+        List<PackageComponent> rows = jdbcTemplate.query("""
+                SELECT sku.id,sku.sku_code,sku.name,r.name resource_name,r.resource_type,
+                       JSON_UNQUOTE(JSON_EXTRACT(sku.attributes, '$.ticketType')) ticket_type
+                FROM bf_resource_sku sku JOIN bf_resource r ON r.id=sku.resource_id
+                WHERE sku.id=? AND sku.status='ACTIVE' AND r.status='ACTIVE' AND r.resource_type='SCENIC_TICKET'
+                """, (rs, rowNum) -> new PackageComponent(rs.getLong("id"), rs.getString("sku_code"),
+                rs.getString("name"), rs.getString("resource_name"), rs.getString("resource_type"),
+                rs.getString("ticket_type"), request.quantity()), request.skuId());
+        if (rows.isEmpty()) {
+            throw new BusinessException(CommonErrorCode.NOT_FOUND, "套票组件SKU不存在、未上架或不属于景区票务");
+        }
+        PackageComponent component = rows.get(0);
+        if ("PACKAGE".equals(component.ticketType())) {
+            throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "套票不能嵌套其他套票");
+        }
+        return component;
+    }
+
     private String normalizeStatus(String status) {
         if (!StringUtils.hasText(status)) throw new BusinessException(CommonErrorCode.INVALID_REQUEST, "status不能为空");
         String normalized = status.trim().toUpperCase(Locale.ROOT);
@@ -524,4 +651,8 @@ public class AdminScenicManagementService {
     private record ScenicSpotLocked(long id, long siteId, String siteCode) {}
     private record ScenicSkuLocked(long id, long scenicSpotId, String skuCode) {}
     private record InventoryLocked(long id, int totalQuantity, int availableQuantity) {}
+    private record PackageHead(long packageSkuId, long packageId, String packageCode, String name,
+                               String description, long priceCent, String status) {}
+    private record PackageComponent(long skuId, String skuCode, String skuName, String resourceName,
+                                    String resourceType, String ticketType, int quantity) {}
 }

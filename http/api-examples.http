@@ -321,3 +321,95 @@ Content-Type: application/json
 {
   "idNo": "150204199001011234"
 }
+
+### 36. 管理员新增景区项目套票：请先执行第3、25、27和32步
+# 套票本身是独立可售SKU，价格、库存和限流均由套票自身控制。
+POST http://localhost:8080/api/v1/admin/scenic-spots/{{scenicSpotId}}/tickets
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "skuCode": "SCENIC_PACKAGE_{{$timestamp}}",
+  "name": "景区双人联票（联调）",
+  "ticketType": "PACKAGE",
+  "priceCent": 10000,
+  "status": "ACTIVE",
+  "audienceRule": "适用于双人或按组件数量分别入园的游客",
+  "usageRule": "购买后按预约日期核销套票内各项目",
+  "refundRule": "任一组件未核销前可按平台规则申请退款",
+  "entryNotice": "请分别出示套票内各项目的电子票二维码",
+  "validDays": 1,
+  "maxPerOrder": 5,
+  "realNameRequired": false,
+  "idCardRequired": false
+}
+
+> {%
+    client.global.set("packageSkuId", response.body.data.skuId);
+%}
+
+### 37. 管理员配置套票组件：至少两个普通景区票，不能嵌套套票
+# scenicSkuId 由第27步保存；managedScenicSkuId 由第32步保存。
+PUT http://localhost:8080/api/v1/admin/scenic-packages/{{packageSkuId}}/components
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "components": [
+    {
+      "skuId": {{scenicSkuId}},
+      "quantity": 1
+    },
+    {
+      "skuId": {{managedScenicSkuId}},
+      "quantity": 1
+    }
+  ]
+}
+
+### 38. 管理员设置套票当日库存与限流
+# 套票库存独立于组件库存，运营人员须按最紧缺组件的接待能力设置总量。
+PUT http://localhost:8080/api/v1/admin/scenic-tickets/{{packageSkuId}}/inventories/{{managedServiceDate}}
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: scenic-package-slot-{{$timestamp}}
+Content-Type: application/json
+
+{
+  "totalQuantity": 20,
+  "priceCent": 10000
+}
+
+### 39. 用户查询已上架的项目套票详情
+GET http://localhost:8080/api/v1/app/scenic-packages/{{packageSkuId}}
+Authorization: Bearer {{userToken}}
+
+### 40. 用户创建项目套票订单：按套票SKU下单，不直接购买组件
+POST http://localhost:8080/api/v1/app/orders
+Authorization: Bearer {{userToken}}
+Idempotency-Key: scenic-package-order-{{$timestamp}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "skuId": {{packageSkuId}},
+      "quantity": 1,
+      "serviceDate": "{{managedServiceDate}}",
+      "timeSlot": ""
+    }
+  ],
+  "remark": "景区项目套票联调订单"
+}
+
+> {%
+    client.global.set("packageOrderId", response.body.data.id);
+%}
+
+### 41. 模拟支付项目套票：支付后按组件生成多张可独立核销的电子票
+POST http://localhost:8080/api/v1/app/orders/{{packageOrderId}}/mock-pay
+Authorization: Bearer {{userToken}}
+Idempotency-Key: scenic-package-payment-{{$timestamp}}
+
+### 42. 查询项目套票电子票：应返回每个组件各自的电子票和二维码
+GET http://localhost:8080/api/v1/app/orders/{{packageOrderId}}/tickets
+Authorization: Bearer {{userToken}}

@@ -66,6 +66,21 @@ public class AdminScenicManagementController {
                 CurrentPrincipal.from(request), skuId, body), TraceIds.from(request));
     }
 
+    @GetMapping("/scenic-packages/{packageSkuId}/components")
+    public ApiResponse<ScenicPackageResponse> packageComponents(
+            @PathVariable long packageSkuId, HttpServletRequest request) {
+        return ApiResponse.success(service.packageDetail(CurrentPrincipal.from(request), packageSkuId),
+                TraceIds.from(request));
+    }
+
+    @PutMapping("/scenic-packages/{packageSkuId}/components")
+    public ApiResponse<ScenicPackageResponse> replacePackageComponents(
+            @PathVariable long packageSkuId, @RequestBody PackageComponentUpdateRequest body,
+            HttpServletRequest request) {
+        return ApiResponse.success("套票组件更新成功", service.replacePackageComponents(
+                CurrentPrincipal.from(request), packageSkuId, body), TraceIds.from(request));
+    }
+
     @PutMapping("/scenic-tickets/{skuId}/inventories/{businessDate}")
     public ApiResponse<ScenicInventorySetupResponse> setupInventory(
             @PathVariable long skuId,
