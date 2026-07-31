@@ -109,15 +109,19 @@ Authorization: Bearer {{userToken}}
 GET http://localhost:8080/api/v1/app/orders/{{orderId}}/timeline
 Authorization: Bearer {{userToken}}
 
-### 14. 模拟退款：仅用于已支付且电子票尚未核销的订单
-POST http://localhost:8080/api/v1/app/orders/{{orderId}}/mock-refund
+### 14. 用户提交退款申请：申请后等待管理员审核，订单和电子票暂不变化
+POST http://localhost:8080/api/v1/app/orders/{{orderId}}/refund-applications
 Authorization: Bearer {{userToken}}
-Idempotency-Key: shared-refund-001
+Idempotency-Key: shared-refund-{{$timestamp}}
 Content-Type: application/json
 
 {
-  "reason": "模块联调退款"
+  "reason": "行程变更，申请退款"
 }
+
+> {%
+    client.global.set("refundId", response.body.data.id);
+%}
 
 ### 15. 管理员查询全部订单
 GET http://localhost:8080/api/v1/admin/orders?page=1&pageSize=20
@@ -421,4 +425,77 @@ Authorization: Bearer {{adminToken}}
 
 ### 44. 管理员分页查询景区核销记录：不返回游客身份证和核销码
 GET http://localhost:8080/api/v1/admin/scenic-spots/{{scenicSpotId}}/operations/verification-records?startDate={{managedServiceDate}}&endDate={{managedServiceDate}}&page=1&pageSize=20
+Authorization: Bearer {{adminToken}}
+
+### 45. 管理员查询待审核退款申请
+GET http://localhost:8080/api/v1/admin/refund-applications?status=PENDING_REVIEW&page=1&pageSize=20
+Authorization: Bearer {{adminToken}}
+
+### 46. 管理员通过退款：订单进入REFUNDING，等待退款渠道回调
+POST http://localhost:8080/api/v1/admin/refund-applications/{{refundId}}/approve
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "comment": "电子票未核销，符合退票规则"
+}
+
+> {%
+    client.global.set("channelRefundId", response.body.data.channelRefundId);
+%}
+
+### 47. 模拟退款渠道成功回调：正式微信支付接入后由微信服务器调用并验签
+POST http://localhost:8080/api/v1/callbacks/refunds/mock
+X-Mock-Callback-Key: local-only-refund-callback
+Content-Type: application/json
+
+{
+  "channelRefundId": "{{channelRefundId}}",
+  "status": "SUCCESS",
+  "message": "模拟渠道退款成功"
+}
+
+### 48. 用户查询退款详情：状态应为SUCCESS
+GET http://localhost:8080/api/v1/app/refund-applications/{{refundId}}
+Authorization: Bearer {{userToken}}
+
+### 49. 用户查询自己的退款申请列表
+GET http://localhost:8080/api/v1/app/refund-applications?page=1&pageSize=20
+Authorization: Bearer {{userToken}}
+
+### 50. 查询退款后的完整订单时间线：应包含申请、审核、渠道成功全过程
+GET http://localhost:8080/api/v1/app/orders/{{orderId}}/timeline
+Authorization: Bearer {{userToken}}
+
+### 51. 管理员新增语音导览内容
+POST http://localhost:8080/api/v1/admin/scenic-spots/{{scenicSpotId}}/guides
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "contentType": "AUDIO",
+  "title": "兵器历史馆语音讲解（联调）",
+  "summary": "重点展品语音讲解",
+  "coverUrl": "/images/scenic/guide-audio.jpg",
+  "contentUrl": "/audio/scenic/weapon-history.mp3",
+  "contentText": "语音讲解文字稿，仅供开发联调。",
+  "durationSeconds": 180,
+  "sortOrder": 10,
+  "status": "ACTIVE"
+}
+
+> {%
+    client.global.set("scenicGuideId", response.body.data.id);
+%}
+
+### 52. 用户查询已发布的景区语音导览
+GET http://localhost:8080/api/v1/app/scenic-spots/{{scenicSpotId}}/guides?contentType=AUDIO
+Authorization: Bearer {{userToken}}
+
+### 53. 用户查询单条导览详情
+GET http://localhost:8080/api/v1/app/scenic-guides/{{scenicGuideId}}
+Authorization: Bearer {{userToken}}
+
+### 54. 管理员查询该景区全部导览内容：包含草稿和已下架内容
+GET http://localhost:8080/api/v1/admin/scenic-spots/{{scenicSpotId}}/guides
 Authorization: Bearer {{adminToken}}

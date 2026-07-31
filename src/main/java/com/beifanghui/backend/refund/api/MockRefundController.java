@@ -6,8 +6,10 @@ import com.beifanghui.backend.shared.api.ApiResponse;
 import com.beifanghui.backend.shared.web.TraceIds;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.context.annotation.Profile;
 
 @RestController
+@Profile("legacy-mock-refund")
 @RequestMapping("/api/v1/app/orders")
 public class MockRefundController {
     private final MockRefundService service;

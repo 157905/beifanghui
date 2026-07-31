@@ -19,7 +19,7 @@ public class RedisRateLimitInterceptor implements HandlerInterceptor {
 
     private static final String KEY_PREFIX = "bfh:rate:";
     private static final Pattern PAYMENT_PATH = Pattern.compile("^/api/v1/app/orders/\\d+/mock-pay$");
-    private static final Pattern REFUND_PATH = Pattern.compile("^/api/v1/app/orders/\\d+/mock-refund$");
+    private static final Pattern REFUND_PATH = Pattern.compile("^/api/v1/app/orders/\\d+/refund-applications$");
     private static final Pattern VERIFICATION_PATH =
             Pattern.compile("^/api/v1/(admin|ops)/verifications/consume$");
     private static final DefaultRedisScript<List> COUNTER_SCRIPT = new DefaultRedisScript<>("""
