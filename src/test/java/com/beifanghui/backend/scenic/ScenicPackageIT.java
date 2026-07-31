@@ -11,8 +11,11 @@ import com.beifanghui.backend.scenic.api.AdminScenicTicketResponse;
 import com.beifanghui.backend.scenic.api.PackageComponentRequest;
 import com.beifanghui.backend.scenic.api.PackageComponentUpdateRequest;
 import com.beifanghui.backend.scenic.api.ScenicInventorySetupRequest;
+import com.beifanghui.backend.scenic.api.ScenicOperationSummaryResponse;
 import com.beifanghui.backend.scenic.api.ScenicPackageResponse;
+import com.beifanghui.backend.scenic.api.ScenicVerificationRecordResponse;
 import com.beifanghui.backend.scenic.application.AdminScenicManagementService;
+import com.beifanghui.backend.scenic.application.ScenicOperationQueryService;
 import com.beifanghui.backend.scenic.application.ScenicPackageQueryService;
 import com.beifanghui.backend.payment.application.MockPaymentService;
 import com.beifanghui.backend.verification.api.VerificationTicketResponse;
@@ -45,6 +48,7 @@ class ScenicPackageIT {
             "package-ops", "套票核销人员", "OPS", List.of("ROLE_OPS"));
 
     @Autowired private AdminScenicManagementService managementService;
+    @Autowired private ScenicOperationQueryService operationQueryService;
     @Autowired private ScenicPackageQueryService packageQueryService;
     @Autowired private OrderApplicationService orderService;
     @Autowired private MockPaymentService paymentService;
@@ -81,6 +85,17 @@ class ScenicPackageIT {
         assertEquals("PAID", orderService.detail(USER, order.id()).status());
         verificationTicketService.consume(OPS, tickets.get(1).code());
         assertEquals("COMPLETED", orderService.detail(USER, order.id()).status());
+
+        ScenicOperationSummaryResponse summary = operationQueryService.summary(spot.id(), LocalDate.now(), LocalDate.now());
+        List<ScenicVerificationRecordResponse> verificationRecords = operationQueryService.verificationRecords(
+                spot.id(), LocalDate.now(), LocalDate.now(), 1, 20).items();
+        assertEquals(1, summary.paidOrderCount());
+        assertEquals(1, summary.soldTicketCount());
+        assertEquals(2, summary.issuedTicketCount());
+        assertEquals(2, summary.verifiedTicketCount());
+        assertEquals(100D, summary.verificationRate());
+        assertEquals(2, verificationRecords.size());
+        assertTrue(verificationRecords.stream().allMatch(record -> "QR_CODE".equals(record.verificationChannel())));
     }
 
     private AdminScenicTicketResponse createTicket(long scenicSpotId, String skuCode, String name,
